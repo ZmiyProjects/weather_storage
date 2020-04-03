@@ -1,0 +1,3 @@
+USE
+
+CREATE DATABASE Weather

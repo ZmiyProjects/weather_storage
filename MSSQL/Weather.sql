@@ -53,7 +53,6 @@ CREATE TABLE Import.Organization(
     OrganizationId INT PRIMARY KEY IDENTITY,
     OrganizationName VARCHAR(255) UNIQUE NOT NULL,
     Address VARCHAR(255) NOT NULL,
-    PostalCode CHAR(8) NOT NULL,
     WebSite VARCHAR(255) NULL,
     LocalityId INT NOT NULL REFERENCES Import.Locality(LocalityId),
     ParentOrganizationId INT REFERENCES Import.Organization(OrganizationId)
@@ -108,7 +107,7 @@ CREATE LOGIN weather_user_login WITH PASSWORD = 'weatheruser';
 CREATE USER weather_user FOR LOGIN weather_user_login;
 
 -- Разрешиле weather_user только чтение в рамках схемы Static, прочие операции недоступны (проверено)
-GRANT SELECT ON SCHEMA::Static TO weather_user;
+GRANT SELECT, EXECUTE ON SCHEMA::Static TO weather_user;
 
 -- Разрешает weather_user чтение, обновление, удаление записей а также вызов функций/процедув в рамках схемы Import
 GRANT SELECT, UPDATE, DELETE, EXECUTE ON SCHEMA::Import TO weather_user;
@@ -120,34 +119,6 @@ GRANT SELECT, UPDATE, DELETE, EXECUTE ON SCHEMA::Import TO weather_user;
 
 -- Работает
 DENY UPDATE, DELETE ON OBJECT::Import.Registration TO weather_user;
-
-GO
--- Функции
--- Вернуть все известные направления ветра в соответствии с 16 румбовой системой
-CREATE OR ALTER FUNCTION Import.get_all_wind_direction() RETURNS TABLE AS
-    RETURN (
-      SELECT WD.WindDirectionId, WD.Direction, WD.Mark FROM Static.WindDirection AS WD
-    );
-GO
--- Вернуть одно из значений направления ветра по идентификатору
-CREATE OR ALTER FUNCTION Import.get_wind_direction(@WindDirectionId INT) RETURNS TABLE AS
-    RETURN (
-      SELECT WD.WindDirectionId, WD.Direction, WD.Mark FROM Static.WindDirection AS WD
-           WHERE WD.WindDirectionId = @WindDirectionId
-    );
-GO
--- Вернуть все извстные состояния облачного покрова
-CREATE OR ALTER FUNCTION Import.get_all_cloudiness() RETURNS TABLE AS
-    RETURN (
-      SELECT C.CloudinessId, C.CloudinessLevel, C.Octane FROM Static.Cloudiness AS C
-    );
-GO
--- Вернуть одно из значений облачности по идентификатору
-CREATE OR ALTER FUNCTION Import.get_cloudiness(@CloudinessId INT) RETURNS TABLE AS
-    RETURN (
-      SELECT C.CloudinessId, C.CloudinessLevel, C.Octane FROM Static.Cloudiness AS C
-           WHERE C.CloudinessId = @CloudinessId
-    );
 
 -- Хранимые процедуры
 -- Вставка в БД сведений о одной стране из JSON (TotalArea вычисляется во время вставки)
@@ -161,9 +132,9 @@ CREATE OR ALTER PROCEDURE Import.insert_country_json(@json NVARCHAR(MAX)) AS
             J.WaterArea,
             J.WaterArea + J.LandArea AS TotalArea
         FROM OPENJSON(@json) WITH (
-            CountryName VARCHAR(100),
-            LandArea INT,
-            WaterArea INT
+            CountryName VARCHAR(100) '$.CountryName',
+            LandArea INT '$.LandArea',
+            WaterArea INT '$.WaterArea'
         ) AS J;
     END;
 GO
@@ -176,7 +147,7 @@ CREATE OR ALTER PROCEDURE Import.insert_region_json(@json NVARCHAR(MAX), @Countr
            J.RegionName,
            @CountryId
        FROM OPENJSON(@json) WITH (
-           RegionName VARCHAR(100)
+           RegionName VARCHAR(100) '$.RegionName'
        ) AS J
     END;
 GO
@@ -189,7 +160,7 @@ CREATE OR ALTER PROCEDURE Import.insert_locality_json(@json NVARCHAR(MAX), @Regi
             J.LocalityName,
             @RegionId
         FROM OPENJSON(@json) WITH (
-            LocalityName VARCHAR(100)
+            LocalityName VARCHAR(100) '$.LocalityName'
         ) AS J;
     END;
 GO
@@ -198,16 +169,15 @@ GO
 -- Добавить проверку наличия родительской организации и бросить исключение приее отсутствии!
 CREATE OR ALTER PROCEDURE Import.insert_organization_json(@json NVARCHAR(MAX)) AS
     BEGIN
-        INSERT INTO Import.Organization(OrganizationName, Address, PostalCode, WebSite, LocalityId, ParentOrganizationId)
+        INSERT INTO Import.Organization(OrganizationName, Address, WebSite, LocalityId, ParentOrganizationId)
         SELECT
-            J.OrganizationName, J.Address, J.PostalCode, J.WebSite, J.LocalityId, J.ParentOrganizationId
+            J.OrganizationName, J.Address, J.WebSite, J.LocalityId, J.ParentOrganizationId
         FROM OPENJSON(@json) WITH (
-            OrganizationName VARCHAR(255),
-            Address VARCHAR(255),
-            PostalCode CHAR(8),
-            WebSite VARCHAR(255),
-            LocalityId INT,
-            ParentOrganizationId INT
+            OrganizationName VARCHAR(255) '$.OrganizationName',
+            Address VARCHAR(255) '$.Address',
+            WebSite VARCHAR(255) '$.WebSite',
+            LocalityId INT '$.LocalityId',
+            ParentOrganizationId INT '$.ParentOrganizationId'
         ) AS J;
     END;
 GO
@@ -219,12 +189,12 @@ CREATE OR ALTER PROCEDURE Import.insert_station_json(@json NVARCHAR(MAX)) AS
         SELECT
             J.StationName, J.Latitude, J.Longitude, J.Height, J.RegionId, J.OrganizationId
         FROM OPENJSON(@json) WITH (
-            StationName VARCHAR(255),
-            Latitude NUMERIC(5, 2),
-            Longitude NUMERIC(5, 2),
-            Height SMALLINT,
-            RegionId INT,
-            OrganizationId INT
+            StationName VARCHAR(255) '$.StationName',
+            Latitude NUMERIC(5, 2) '$.Latitude',
+            Longitude NUMERIC(5, 2) '$.Longitude',
+            Height SMALLINT '$.Height',
+            RegionId INT '$.RegionId',
+            OrganizationId INT '$.OrganizationId'
         ) AS J;
     END;
 GO
@@ -292,11 +262,23 @@ CREATE PROCEDURE Import.delete_organization(@OrganizationId INT) AS
         ELSE
             DELETE FROM Import.Organization WHERE OrganizationId = @OrganizationId;
     END
+GO
+
+-- Удаление метеостанции с проверкой наличия в БД, если страна отсутствует будет вызвано исключение
+CREATE PROCEDURE Import.delete_station(@StationId INT) AS
+    BEGIN
+        IF NOT EXISTS(SELECT * FROM Import.Station WHERE StationId = @StationId)
+            THROW 51006, N'Организация с заданным идентификатором отсутствует!', 12;
+        ELSE
+            DELETE FROM Import.Station WHERE StationId = @StationId;
+    END
 
 --Обновляет сведения о стране
 GO
-CREATE OR ALTER PROCEDURE Import.update_country(@json NVARCHAR(MAX), @CointryId INT) AS
+CREATE OR ALTER PROCEDURE Import.update_country(@json NVARCHAR(MAX), @CountryId INT) AS
 BEGIN
+    IF NOT EXISTS(SELECT * FROM Import.Country WHERE CountryId = @CountryId)
+        THROW 51002, N'Страна с заданным идентификатором отсутствует!', 11;
     UPDATE Import.Country SET
 	    CountryName = COALESCE(T.JCountyName, CountryName),
 		LandArea = COALESCE(T.JLandArea, LandArea),
@@ -309,7 +291,99 @@ BEGIN
 			WaterArea INT
 		) AS J
 	) AS T
-	WHERE CountryId = @CointryId
+	WHERE CountryId = @CountryId
+END
+
+GO
+-- Обновляет сведения о регионе
+CREATE OR ALTER PROCEDURE Import.update_region(@json NVARCHAR(MAX), @RegionId INT) AS
+BEGIN
+    IF NOT EXISTS(SELECT * FROM Import.Region WHERE RegionId = @RegionId)
+        THROW 51003, N'Регион с заданным идентификатором отсутствует!', 11;
+    UPDATE Import.Region SET
+	    RegionName = COALESCE(T.JRegionName, RegionName),
+		CountryId = COALESCE(T.JCountryId, CountryId)
+	FROM (
+	    SELECT J.RegionName AS JRegionName, J.CountryId AS JCountryId
+		FROM OPENJSON(@json) WITH (
+		    RegionName VARCHAR(100),
+			CountryId INT
+		) AS J
+	) AS T
+	WHERE RegionId = @RegionId
+END
+
+GO
+-- Обновляет сведения о населенном пункте
+CREATE OR ALTER PROCEDURE Import.update_locality(@json NVARCHAR(MAX), @LocalityId INT) AS
+BEGIN
+    IF NOT EXISTS(SELECT * FROM Import.Locality WHERE LocalityId = @LocalityId)
+        THROW 51004, N'Населённый пункт с заданным идентификатором отсутствует!', 11;
+    UPDATE Import.Locality SET
+	    LocalityName = COALESCE(T.JLocalityName, LocalityName),
+	    RegionId = COALESCE(T.JRegionId, RegionId)
+	FROM (
+	    SELECT J.LocalityName AS JLocalityName, J.RegionId AS JRegionId
+		FROM OPENJSON(@json) WITH (
+		    LocalityName VARCHAR(100),
+			RegionId INT
+		) AS J
+	) AS T
+	WHERE LocalityId = @LocalityId
+END
+
+GO
+-- Обновление сведений о организации
+CREATE OR ALTER PROCEDURE Import.update_organization(@json NVARCHAR(MAX), @OrganizationId INT) AS
+BEGIN
+    IF NOT EXISTS(SELECT * FROM Import.Organization WHERE OrganizationId = @OrganizationId)
+        THROW 51005, N'Организация с заданным идентификатором отсутствует!', 12;
+    UPDATE Import.Organization SET
+	    OrganizationName = COALESCE(T.JOrganizationName, OrganizationName),
+	    Address = COALESCE(T.JAddress, Address),
+        WebSite = COALESCE(T.JWebSite, WebSite),
+        LocalityId = COALESCE(T.JLocalityId, LocalityId),
+        ParentOrganizationId = COALESCE(T.JParentOrganizationId, ParentOrganizationId)
+	FROM (
+	    SELECT J.OrganizationName AS JOrganizationName, J.Address AS JAddress,
+	           J.WebSite AS JWebSite, J.LocalityId AS JLocalityId, J.ParentOrganizationId AS JParentOrganizationId
+		FROM OPENJSON(@json) WITH (
+		    OrganizationName VARCHAR(255),
+			Address VARCHAR(255),
+		    WebSite VARCHAR(255),
+		    LocalityId INT,
+		    ParentOrganizationId INT
+		) AS J
+	) AS T
+	WHERE OrganizationId = @OrganizationId
+END
+
+GO
+-- Обновление сведений о станции
+CREATE OR ALTER PROCEDURE Import.update_station(@json NVARCHAR(MAX), @StationId INT) AS
+BEGIN
+    IF NOT EXISTS(SELECT * FROM Import.Station WHERE StationId = @StationId)
+        THROW 51006, N'Организация с заданным идентификатором отсутствует!', 12;
+    UPDATE Import.Station SET
+        StationName = COALESCE(T.JStationName, StationName),
+        Latitude = COALESCE(T.JLatitude, Latitude),
+        Longitude = COALESCE(T.JLongitude, Longitude),
+        Height = COALESCE(T.JHeight, Height),
+        RegionId = COALESCE(T.JRegionId, RegionId),
+        OrganizationId = COALESCE(T.JOrganizationId, OrganizationId)
+	FROM (
+	    SELECT J.StationName AS JStationName, J.Latitude AS JLatitude, J.Longitude AS JLongitude,
+	           J.Height AS JHeight, RegionId AS JRegionId, OrganizationId AS JOrganizationId
+		FROM OPENJSON(@json) WITH (
+		    StationName VARCHAR(255),
+			Latitude NUMERIC(5, 2),
+		    Longitude NUMERIC(5, 2),
+		    Height SMALLINT,
+		    RegionId INT,
+		    OrganizationId INT
+		) AS J
+	) AS T
+	WHERE StationId = @StationId
 END
 
 -- Триггер для автомитическогог вычисления суммарной площади страны
@@ -323,35 +397,197 @@ CREATE TRIGGER Import.calculate_total ON Import.Country AFTER UPDATE, INSERT AS
     END
 GO
 
+-- Функции возвращающие содержимое таблиц в формаье JSON
 
+-- Получить все страны
+CREATE FUNCTION Import.country_json() RETURNS NVARCHAR(MAX) AS
+    BEGIN
+        RETURN (
+            SELECT C.CountryId, C.CountryName, C.LandArea, C.WaterArea, C.TotalArea FROM Import.Country AS C
+            FOR JSON PATH
+            );
+    END
+GO
+
+-- Вернуть сведение о стране по идентификатору
+CREATE FUNCTION Import.one_country_json(@CountryId INT) RETURNS NVARCHAR(MAX) AS
+BEGIN
+    IF NOT EXISTS(SELECT * FROM Import.Country WHERE CountryId = @CountryId)
+        RETURN NULL;
+    RETURN (
+        SELECT C.CountryId, C.CountryName, C.LandArea, C.WaterArea, C.TotalArea FROM Import.Country AS C
+        WHERE CountryId = @CountryId
+        FOR JSON PATH
+        );
+END
+
+GO
+-- получить все регионы
+CREATE FUNCTION Import.region_json() RETURNS NVARCHAR(MAX) AS
+    BEGIN
+        RETURN (
+        SELECT RegionId, RegionName, CountryId FROM Import.Region
+        FOR JSON PATH
+        );
+   END
+
+GO
+-- Получить сведения о регионе по идентификатору
+CREATE FUNCTION Import.one_region_json(@RegionId INT) RETURNS NVARCHAR(MAX) AS
+BEGIN
+    IF NOT EXISTS(SELECT * FROM Import.Region WHERE RegionId = @RegionId)
+        RETURN NULL;
+    RETURN (
+        SELECT RegionId, RegionName, CountryId FROM Import.Region
+        WHERE RegionId = @RegionId
+        FOR JSON PATH
+        );
+END
+
+GO
+-- получить все населенные пункты
+CREATE FUNCTION Import.locality_json() RETURNS NVARCHAR(MAX) AS
+BEGIN
+    RETURN (
+        SELECT LocalityId, LocalityName, RegionId FROM Import.Locality
+        FOR JSON PATH
+        );
+END
+GO
+
+-- Получить сведения о регионе по идентификатору
+CREATE FUNCTION Import.one_locality_json(@LocalityId INT) RETURNS NVARCHAR(MAX) AS
+BEGIN
+    IF NOT EXISTS(SELECT * FROM Import.Locality WHERE LocalityId = @LocalityId)
+        RETURN NULL;
+    RETURN (
+        SELECT LocalityId, LocalityName, RegionId FROM Import.Locality
+        WHERE LocalityId = @LocalityId
+        FOR JSON PATH
+        );
+END
+GO
+
+-- получить все станции
+CREATE FUNCTION Import.station_json() RETURNS NVARCHAR(MAX) AS
+BEGIN
+    RETURN (
+        SELECT StationId, StationName, Latitude, Longitude, Height, RegionId, OrganizationId FROM Import.Station
+        FOR JSON PATH
+        );
+END
+GO
+
+-- Получить сведения о станции по идентификатору
+CREATE FUNCTION Import.one_station_json(@StationId INT) RETURNS NVARCHAR(MAX) AS
+BEGIN
+    IF NOT EXISTS(SELECT * FROM Import.Station WHERE StationId = @StationId)
+        RETURN NULL;
+    RETURN (
+        SELECT StationId, StationName, Latitude, Longitude, Height, RegionId, OrganizationId FROM Import.Station
+        WHERE StationId = @StationId
+        FOR JSON PATH
+        );
+END
+GO
+
+-- Получить все организации
+CREATE FUNCTION Import.organization_json() RETURNS NVARCHAR(MAX) AS
+BEGIN
+    RETURN (
+        SELECT OrganizationId, OrganizationName, Address, WebSite, LocalityId, ParentOrganizationId FROM Import.Organization
+        FOR JSON PATH
+        );
+END
+GO
+
+-- Получить сведения о организации по идентификатору
+CREATE FUNCTION Import.one_organization_json(@OrganizationId INT) RETURNS NVARCHAR(MAX) AS
+BEGIN
+    RETURN (
+        SELECT OrganizationId, OrganizationName, Address, WebSite, LocalityId, ParentOrganizationId FROM Import.Organization
+        WHERE OrganizationId = @OrganizationId
+        FOR JSON PATH
+        );
+END
+GO
+
+-- Получить зарегистрированные на метеостанции данные
+CREATE FUNCTION Import.registration_json(@StationId INT) RETURNS NVARCHAR(MAX) AS
+BEGIN
+    RETURN (
+        SELECT
+           StationId, RegistrationDate, Temperature, DewPoint, Pressure, PressureStationLevel,
+           Humidity, VisibleRange, WindSpeed, Weather, WindDirectionId, CloudinessId
+        FROM Import.Registration
+        WHERE StationId = @StationId
+        FOR JSON PATH
+        );
+END
+GO
+
+-- Получить зарегистрированные на метеостанции данные в заданном диапозоне
+CREATE FUNCTION Import.registration_diapason_json(@StationId INT, @d_begin DATETIME, @d_end DATETIME) RETURNS NVARCHAR(MAX) AS
+BEGIN
+     RETURN (
+        SELECT
+           StationId, RegistrationDate, Temperature, DewPoint, Pressure, PressureStationLevel,
+           Humidity, VisibleRange, WindSpeed, Weather, WindDirectionId, CloudinessId
+        FROM Import.Registration
+        WHERE StationId = @StationId AND RegistrationDate BETWEEN @d_begin AND @d_end
+        FOR JSON PATH
+         );
+END
+GO
+
+-- Получить содержание справочника облачности
+CREATE FUNCTION Static.get_cloudiness_json() RETURNS NVARCHAR(MAX) AS
+BEGIN
+    RETURN (
+        SELECT CloudinessId, CloudinessLevel, Octane FROM Static.Cloudiness
+        FOR JSON PATH
+        );
+END
+
+GO
+
+-- Получить содержание справочника направлений ветра
+CREATE FUNCTION Static.get_wind_direction_json() RETURNS NVARCHAR(MAX) AS
+BEGIN
+    RETURN (
+        SELECT WindDirectionId, Direction, Mark FROM Static.WindDirection
+        FOR JSON PATH
+        );
+END
+GO
 -- Заполнение статических таблиц
 -- Направление ветра
-INSERT INTO Static.WindDirection(Direction, Mark) VALUES ('Ветер, дующий с западо-юго-запада', 'ЗЮЗ');
-INSERT INTO Static.WindDirection(Direction, Mark) VALUES ('Ветер, дующий с запада', 'З');
-INSERT INTO Static.WindDirection(Direction, Mark) VALUES ('Ветер, дующий с юго-юго-запада', 'ЮЮЗ');
-INSERT INTO Static.WindDirection(Direction, Mark) VALUES ('Ветер, дующий с северо-запада', 'СЗ');
-INSERT INTO Static.WindDirection(Direction, Mark) VALUES ('Ветер, дующий с северо-северо-запада', 'ССЗ');
-INSERT INTO Static.WindDirection(Direction, Mark) VALUES ('Ветер, дующий с юго-запада', 'ЮЗ');
-INSERT INTO Static.WindDirection(Direction, Mark) VALUES ('Ветер, дующий с юга', 'Ю');
-INSERT INTO Static.WindDirection(Direction, Mark) VALUES ('Ветер, дующий с юго-юго-востока', 'ЮЮВ');
-INSERT INTO Static.WindDirection(Direction, Mark) VALUES ('Ветер, дующий с юго-востока', 'ЮВ');
-INSERT INTO Static.WindDirection(Direction, Mark) VALUES ('Штиль, безветрие', 'Штиль');
-INSERT INTO Static.WindDirection(Direction, Mark) VALUES ('Ветер, дующий с северо-северо-востока', 'ССВ');
-INSERT INTO Static.WindDirection(Direction, Mark) VALUES ('Ветер, дующий с севера', 'С');
-INSERT INTO Static.WindDirection(Direction, Mark) VALUES ('Ветер, дующий с северо-востока', 'СВ');
-INSERT INTO Static.WindDirection(Direction, Mark) VALUES ('Ветер, дующий с востоко-северо-востока', 'ВСВ');
-INSERT INTO Static.WindDirection(Direction, Mark) VALUES ('Ветер, дующий с востока', 'В');
-INSERT INTO Static.WindDirection(Direction, Mark) VALUES ('Ветер, дующий с западо-северо-запада', 'ЗСЗ');
-INSERT INTO Static.WindDirection(Direction, Mark) VALUES ('Ветер, дующий с востоко-юго-востока', 'ВЮВ');
+INSERT INTO Static.WindDirection(Direction, Mark) VALUES (N'Ветер, дующий с западо-юго-запада', N'ЗЮЗ');
+INSERT INTO Static.WindDirection(Direction, Mark) VALUES (N'Ветер, дующий с запада', N'З');
+INSERT INTO Static.WindDirection(Direction, Mark) VALUES (N'Ветер, дующий с юго-юго-запада', N'ЮЮЗ');
+INSERT INTO Static.WindDirection(Direction, Mark) VALUES (N'Ветер, дующий с северо-запада', N'СЗ');
+INSERT INTO Static.WindDirection(Direction, Mark) VALUES (N'Ветер, дующий с северо-северо-запада', N'ССЗ');
+INSERT INTO Static.WindDirection(Direction, Mark) VALUES (N'Ветер, дующий с юго-запада', N'ЮЗ');
+INSERT INTO Static.WindDirection(Direction, Mark) VALUES (N'Ветер, дующий с юга', N'Ю');
+INSERT INTO Static.WindDirection(Direction, Mark) VALUES (N'Ветер, дующий с юго-юго-востока', N'ЮЮВ');
+INSERT INTO Static.WindDirection(Direction, Mark) VALUES (N'Ветер, дующий с юго-востока', N'ЮВ');
+INSERT INTO Static.WindDirection(Direction, Mark) VALUES (N'Штиль, безветрие', N'Штиль');
+INSERT INTO Static.WindDirection(Direction, Mark) VALUES (N'Ветер, дующий с северо-северо-востока', N'ССВ');
+INSERT INTO Static.WindDirection(Direction, Mark) VALUES (N'Ветер, дующий с севера', N'С');
+INSERT INTO Static.WindDirection(Direction, Mark) VALUES (N'Ветер, дующий с северо-востока', N'СВ');
+INSERT INTO Static.WindDirection(Direction, Mark) VALUES (N'Ветер, дующий с востоко-северо-востока', N'ВСВ');
+INSERT INTO Static.WindDirection(Direction, Mark) VALUES (N'Ветер, дующий с востока', N'В');
+INSERT INTO Static.WindDirection(Direction, Mark) VALUES (N'Ветер, дующий с западо-северо-запада', N'ЗСЗ');
+INSERT INTO Static.WindDirection(Direction, Mark) VALUES (N'Ветер, дующий с востоко-юго-востока', N'ВЮВ');
 
 -- Облачность
-INSERT INTO Static.Cloudiness(CloudinessLevel, Octane) VALUES ('Облаков нет.', '0');
-INSERT INTO Static.Cloudiness(CloudinessLevel, Octane) VALUES ('90  или более, но не 100%', 'Не более 8 и не менее 7 октант');
-INSERT INTO Static.Cloudiness(CloudinessLevel, Octane) VALUES ('70 – 80%.', '6 октантов');
-INSERT INTO Static.Cloudiness(CloudinessLevel, Octane) VALUES ('100%.', '8 октант');
-INSERT INTO Static.Cloudiness(CloudinessLevel, Octane) VALUES ('20–30%.', '2 октанта');
-INSERT INTO Static.Cloudiness(CloudinessLevel, Octane) VALUES ('60%.', '5 октантов');
-INSERT INTO Static.Cloudiness(CloudinessLevel, Octane) VALUES ('Небо не видно из-за тумана и/или других метеорологических явлений.', 'Из-за атмосферных явлений небо не видно');
-INSERT INTO Static.Cloudiness(CloudinessLevel, Octane) VALUES ('50%.', '4 октанта');
-INSERT INTO Static.Cloudiness(CloudinessLevel, Octane) VALUES ('10%  или менее, но не 0', 'Не более 1 октанта, но больше 0');
-INSERT INTO Static.Cloudiness(CloudinessLevel, Octane) VALUES ('40%.', '3 октанта');
+INSERT INTO Static.Cloudiness(CloudinessLevel, Octane) VALUES (N'Облаков нет.', '0');
+INSERT INTO Static.Cloudiness(CloudinessLevel, Octane) VALUES (N'90  или более, но не 100%', N'Не более 8 и не менее 7 октант');
+INSERT INTO Static.Cloudiness(CloudinessLevel, Octane) VALUES (N'70 – 80%.', N'6 октантов');
+INSERT INTO Static.Cloudiness(CloudinessLevel, Octane) VALUES (N'100%.', N'8 октант');
+INSERT INTO Static.Cloudiness(CloudinessLevel, Octane) VALUES (N'20–30%.', N'2 октанта');
+INSERT INTO Static.Cloudiness(CloudinessLevel, Octane) VALUES (N'60%.', N'5 октантов');
+INSERT INTO Static.Cloudiness(CloudinessLevel, Octane) VALUES (N'Небо не видно из-за тумана и/или других метеорологических явлений.', N'Из-за атмосферных явлений небо не видно');
+INSERT INTO Static.Cloudiness(CloudinessLevel, Octane) VALUES (N'50%.', N'4 октанта');
+INSERT INTO Static.Cloudiness(CloudinessLevel, Octane) VALUES (N'10%  или менее, но не 0', N'Не более 1 октанта, но больше 0');
+INSERT INTO Static.Cloudiness(CloudinessLevel, Octane) VALUES (N'40%.', N'3 октанта');

@@ -1,6 +1,7 @@
 from flask import jsonify
 import json
 from sqlalchemy import sql
+import sys
 
 
 def check_json(true_keys: list, values: list) -> bool:
@@ -35,3 +36,9 @@ def simple_import_values(engine, query, **kwargs):
     except:
         print(sys.exc_info()[0])
         return False
+
+
+# функция для отправки запросов на обновление/удаление записей
+def simple_change(engine, query, **kwargs):
+    with engine.begin() as conn:
+        conn.execute(query, kwargs)

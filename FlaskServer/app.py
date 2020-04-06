@@ -228,9 +228,10 @@ def registration(station_id):
             query = sql.text('SELECT Import.registration_json(:id);')
         else:
             try:
-                if datetime.strptime(d_end, 'Y%m%d%') >= datetime.strptime(d_begin, 'Y%m%d%'):
+                if datetime.strptime(d_end, '%Y%m%d') <= datetime.strptime(d_begin, '%Y%m%d'):
                     return jsonify(message='Некорректный диапозон дат!'), 404
             except ValueError:
+                print(sys.exc_info())
                 return jsonify(message='Некорректный диапозон дат!'), 404
             query = sql.text('SELECT Import.registration_diapason_json(:id, :begin, :end);')
         return simple_get_values(db, query, id=station_id, begin=d_begin, end=d_end)

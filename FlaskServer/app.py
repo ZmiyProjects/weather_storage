@@ -46,7 +46,7 @@ def get_country(country_id):
         query = sql.text('SELECT Import.one_country_json(:id)')
         result = db.execute(query, id=country_id).fetchone()[0]
         if result is None:
-            return jsonify(message='Страна с указанным идентификатором не существует!'), 404
+            return jsonify(message='Страна с указанным идентификатором не существует!'), 400
         return jsonify(*json.loads(result)), 200
     elif request.method == 'DELETE':
         del_query = sql.text('EXEC Import.delete_country :id')
@@ -55,7 +55,7 @@ def get_country(country_id):
             return {}, 204
         except:
             print(sys.exc_info())
-            return {}, 404
+            return {}, 400
     elif request.method == 'PATCH':
         upd_query = sql.text('EXEC Import.update_country :json, :id')
         new_value = sql.text('SELECT Import.one_country_json(:id)')
@@ -64,7 +64,7 @@ def get_country(country_id):
             return simple_get_values(db, new_value, id=country_id)
         except:
             print(sys.exc_info())
-            return {}, 404
+            return {}, 400
 
 
 # Загрузка/извлечение данных о регионах в рамках определенной страны
@@ -75,7 +75,7 @@ def all_regions(country_id):
         query = sql.text('EXEC Import.insert_region_json :json, :id')
         if simple_import_values(db, query, json=json.dumps(struct), id=country_id):
             return {}, 201
-        return jsonify(message='exception!'), 404
+        return jsonify(message='exception!'), 400
     elif request.method == 'GET':
         query = sql.text('SELECT Import.region_json()')
         return simple_get_values(db, query, id=country_id)
@@ -97,7 +97,7 @@ def get_region(region_id):
             return {}, 204
         except:
             print(sys.exc_info())
-            return {}, 404
+            return {}, 400
     elif request.method == 'PATCH':
         upd_query = sql.text('EXEC Import.update_region :json, :id')
         new_value = sql.text('SELECT Import.one_region_json(:id)')
@@ -106,7 +106,7 @@ def get_region(region_id):
             return simple_get_values(db, new_value, id=region_id)
         except:
             print(sys.exc_info())
-            return {}, 404
+            return {}, 400
 
 
 # Загрузка/извлечение данных о населенных пунктах в рамках определенной страны
@@ -117,7 +117,7 @@ def all_locality(region_id):
         query = sql.text('EXEC Import.insert_locality_json :json, :id')
         if simple_import_values(db, query, json=json.dumps(struct), id=region_id):
             return {}, 201
-        return jsonify(message='exception!'), 404
+        return jsonify(message='exception!'), 400
     elif request.method == 'GET':
         query = sql.text('SELECT Import.locality_json()')
         return simple_get_values(db, query, id=region_id)
@@ -139,7 +139,7 @@ def get_locality(locality_id):
             return {}, 204
         except:
             print(sys.exc_info())
-            return {}, 404
+            return {}, 400
     elif request.method == 'PATCH':
         upd_query = sql.text('EXEC Import.update_locality :json, :id')
         new_value = sql.text('SELECT Import.one_locality_json(:id)')
@@ -148,7 +148,7 @@ def get_locality(locality_id):
             return simple_get_values(db, new_value, id=locality_id)
         except:
             print(sys.exc_info())
-            return {}, 404
+            return {}, 400
 
 
 # Загрузка/извлечение данных о всех обслуживающих метеостанции организациях
@@ -160,7 +160,7 @@ def all_organizations():
         print(struct)
         if simple_import_values(db, query, json=json.dumps(struct)):
             return {}, 201
-        return {}, 404
+        return {}, 400
     elif request.method == 'GET':
         query = sql.text('SELECT Import.organization_json()')
         return simple_get_values(db, query)
@@ -192,7 +192,7 @@ def one_station(station_id):
         query = sql.text('SELECT Import.one_station_json(:id)')
         result = db.execute(query, id=station_id).fetchone()[0]
         if result is None:
-            return jsonify(message='Регион с указанным идентификатором не существует!'), 404
+            return jsonify(message='Регион с указанным идентификатором не существует!'), 400
         return jsonify(*json.loads(result)), 200
     elif request.method == 'DELETE':
         del_query = sql.text('EXEC Import.delete_station :id')
@@ -201,7 +201,7 @@ def one_station(station_id):
             return {}, 204
         except:
             print(sys.exc_info())
-            return {}, 404
+            return {}, 400
     elif request.method == 'PATCH':
         upd_query = sql.text('EXEC Import.update_station :json, :id')
         new_value = sql.text('SELECT Import.one_station_json(:id)')
@@ -210,7 +210,7 @@ def one_station(station_id):
             return simple_get_values(db, new_value, id=station_id)
         except:
             print(sys.exc_info())
-            return {}, 404
+            return {}, 400
 
 
 # Регистрация поступающих с метеостанции данных
@@ -234,11 +234,11 @@ def registration(station_id):
                 result = "".join([i[0] for i in db.execute(query, id=station_id).fetchall()])
                 return Response(result, mimetype='text/xml')
             else:
-                return {}, 404
+                return {}, 400
         else:
             try:
                 if datetime.strptime(d_end, '%Y%m%d') <= datetime.strptime(d_begin, '%Y%m%d'):
-                    return jsonify(message='Некорректный диапозон дат!'), 404
+                    return jsonify(message='Некорректный диапозон дат!'), 400
                 if data_type == 'json':
                     query = sql.text('SELECT Import.registration_diapason_json(:id, :begin, :end);')
                     return simple_get_values(db, query, id=station_id, begin=d_begin, end=d_end)
@@ -247,10 +247,10 @@ def registration(station_id):
                     result = "".join([i[0] for i in db.execute(query, id=station_id, begin=d_begin, end=d_end).fetchall()])
                     return Response(result, mimetype='text/xml')
                 else:
-                    return {}, 404
+                    return {}, 400
             except ValueError:
                 print(sys.exc_info())
-                return jsonify(message='Некорректный диапозон дат!'), 404
+                return jsonify(message='Некорректный диапозон дат!'), 400
 
 
 if __name__ == '__main__':

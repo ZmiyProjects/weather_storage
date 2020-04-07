@@ -172,6 +172,23 @@ def get_organization(organization_id):
     if request.method == 'GET':
         query = sql.text('SELECT Import.one_organization_json(:id)')
         return simple_get_values(db, query, id=organization_id)
+    elif request.method == 'DELETE':
+        del_query = sql.text('EXEC Import.delete_organization :id')
+        try:
+            simple_change(db, del_query, id=organization_id)
+            return {}, 204
+        except:
+            print(sys.exc_info())
+            return {}, 400
+    elif request.method == 'PATCH':
+        upd_query = sql.text('EXEC Import.update_organization :json, :id')
+        new_value = sql.text('SELECT Import.one_organization_json(:id)')
+        try:
+            simple_change(db, upd_query, json=json.dumps(request.get_json()), id=organization_id)
+            return simple_get_values(db, new_value, id=organization_id)
+        except:
+            print(sys.exc_info())
+            return {}, 400
 
 
 @app.route('/station', methods=['GET', 'POST'])

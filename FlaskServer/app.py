@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response
 from sqlalchemy import create_engine, sql
 import sys
 import json
@@ -224,17 +224,33 @@ def registration(station_id):
     if request.method == 'GET':
         d_begin = request.args.get('begin')
         d_end = request.args.get('end')
+        data_type = request.args.get('type', 'json')
         if d_begin is None or d_end is None:
-            query = sql.text('SELECT Import.registration_json(:id);')
+            if data_type == 'json':
+                query = sql.text('SELECT Import.registration_json(:id);')
+                return simple_get_values(db, query, id=station_id)
+            elif data_type == 'xml':
+                query = sql.text('SELECT Import.registration_xml(:id)')
+                result = "".join([i[0] for i in db.execute(query, id=station_id).fetchall()])
+                return Response(result, mimetype='text/xml')
+            else:
+                return {}, 404
         else:
             try:
                 if datetime.strptime(d_end, '%Y%m%d') <= datetime.strptime(d_begin, '%Y%m%d'):
                     return jsonify(message='Некорректный диапозон дат!'), 404
+                if data_type == 'json':
+                    query = sql.text('SELECT Import.registration_diapason_json(:id, :begin, :end);')
+                    return simple_get_values(db, query, id=station_id, begin=d_begin, end=d_end)
+                elif data_type == 'xml':
+                    query = sql.text('SELECT Import.registration_diapason_xml(:id, :begin, :end);')
+                    result = "".join([i[0] for i in db.execute(query, id=station_id, begin=d_begin, end=d_end).fetchall()])
+                    return Response(result, mimetype='text/xml')
+                else:
+                    return {}, 404
             except ValueError:
                 print(sys.exc_info())
                 return jsonify(message='Некорректный диапозон дат!'), 404
-            query = sql.text('SELECT Import.registration_diapason_json(:id, :begin, :end);')
-        return simple_get_values(db, query, id=station_id, begin=d_begin, end=d_end)
 
 
 if __name__ == '__main__':

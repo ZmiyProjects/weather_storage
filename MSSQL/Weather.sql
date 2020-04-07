@@ -512,7 +512,7 @@ BEGIN
 END
 GO
 
--- Получить зарегистрированные на метеостанции данные
+-- Получить зарегистрированные на метеостанции данные в формате JSON
 CREATE FUNCTION Import.registration_json(@StationId INT) RETURNS NVARCHAR(MAX) AS
 BEGIN
     RETURN (
@@ -526,7 +526,7 @@ BEGIN
 END
 GO
 
--- Получить зарегистрированные на метеостанции данные в заданном диапозоне
+-- Получить зарегистрированные на метеостанции данные в заданном диапозоне в формате JSON
 CREATE FUNCTION Import.registration_diapason_json(@StationId INT, @d_begin DATETIME, @d_end DATETIME) RETURNS NVARCHAR(MAX) AS
 BEGIN
      RETURN (
@@ -537,6 +537,34 @@ BEGIN
         WHERE StationId = @StationId AND RegistrationDate BETWEEN @d_begin AND @d_end
         FOR JSON PATH
          );
+END
+GO
+
+-- Получить зарегистрированные на метеостанции данные в формате XML
+CREATE OR ALTER FUNCTION Import.registration_xml(@StationId INT) RETURNS NVARCHAR(MAX) AS
+BEGIN
+    RETURN (
+        SELECT
+           StationId, RegistrationDate, Temperature, DewPoint, Pressure, PressureStationLevel,
+           Humidity, VisibleRange, WindSpeed, Weather, WindDirectionId, CloudinessId
+        FROM Import.Registration
+        WHERE StationId = @StationId
+        FOR XML PATH, root('Registration')
+        );
+END
+
+GO
+-- Получить зарегистрированные на метеостанции данные в заданном диапозоне в формате XML
+CREATE OR ALTER FUNCTION Import.registration_diapason_xml(@StationId INT, @d_begin DATETIME, @d_end DATETIME) RETURNS NVARCHAR(MAX) AS
+BEGIN
+    RETURN (
+        SELECT
+           StationId, RegistrationDate, Temperature, DewPoint, Pressure, PressureStationLevel,
+           Humidity, VisibleRange, WindSpeed, Weather, WindDirectionId, CloudinessId
+        FROM Import.Registration
+        WHERE StationId = @StationId AND RegistrationDate BETWEEN @d_begin AND @d_end
+        FOR XML PATH, root('Registration')
+        );
 END
 GO
 
@@ -590,4 +618,4 @@ INSERT INTO Static.Cloudiness(CloudinessLevel, Octane) VALUES (N'60%.', N'5 ок
 INSERT INTO Static.Cloudiness(CloudinessLevel, Octane) VALUES (N'Небо не видно из-за тумана и/или других метеорологических явлений.', N'Из-за атмосферных явлений небо не видно');
 INSERT INTO Static.Cloudiness(CloudinessLevel, Octane) VALUES (N'50%.', N'4 октанта');
 INSERT INTO Static.Cloudiness(CloudinessLevel, Octane) VALUES (N'10%  или менее, но не 0', N'Не более 1 октанта, но больше 0');
-INSERT INTO Static.Cloudiness(CloudinessLevel, Octane) VALUES (N'40%.', N'3 октанта');
+INSERT INTO Static.Cloudiness(CloudinessLevel, Octane) VALUES (N'40%.', N'3 октанта')

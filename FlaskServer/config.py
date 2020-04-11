@@ -9,7 +9,7 @@ class Config:
 
 class MSSQLConfig(Config):
     DATABASE_URI = "mssql+pyodbc:///?odbc_connect={}".format(quote_plus(
-            'DRIVER={SQL Server};SERVER=DESKTOP-SC3F9ME\\NOLA2019;DATABASE=Weather;UID=weather_user_login;PWD=weatheruser'))
+            'DRIVER={SQL Server};SERVER=DESKTOP-SOB9IOS\\NOLA;DATABASE=Weather;UID=weather_user_login;PWD=weatheruser'))
 
 
 class MSSQLConfigTest(Config):

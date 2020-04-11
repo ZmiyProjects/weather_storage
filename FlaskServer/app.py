@@ -270,5 +270,26 @@ def registration(station_id):
                 return jsonify(message='Некорректный диапозон дат!'), 400
 
 
+@app.route('/station/<int:station_id>/agg', methods=['GET'])
+def agg_months(station_id):
+    diapason = request.args.get('diapason')
+    if diapason is None or diapason not in ['months', 'weeks', 'days', 'hours12', 'hours6']:
+        return {}, 400
+    d_begin = request.args.get('begin')
+    d_end = request.args.get('end')
+    if d_begin is None or d_end is None:
+        query = sql.text(f'SELECT agg.{diapason}_json(:id);')
+        return simple_get_values(db, query, id=station_id)
+    else:
+        try:
+            if datetime.strptime(d_end, '%Y%m%d') <= datetime.strptime(d_begin, '%Y%m%d'):
+                return jsonify(message='Некорректный диапозон дат!'), 400
+            query = sql.text(f'SELECT agg.{diapason}_json_diapason(:id, :begin, :end);')
+            return simple_get_values(db, query, id=station_id, begin=d_begin, end=d_end)
+        except ValueError:
+            print(sys.exc_info())
+            return jsonify(message='Некорректный диапозон дат!'), 400
+
+
 if __name__ == '__main__':
     app.run()

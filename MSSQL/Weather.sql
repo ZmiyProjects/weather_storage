@@ -1,6 +1,10 @@
 -- Создание БД Weather
 USE master
 GO
+IF DB_ID('Weather') IS NOT NULL
+    DROP DATABASE Weather
+GO
+
 CREATE DATABASE Weather
 GO
 USE Weather
@@ -10,6 +14,8 @@ GO
 CREATE SCHEMA Import
 GO
 CREATE SCHEMA Static
+GO
+CREATE SCHEMA Agg
 GO
 
 -- Создание таблиц "только для чтения" в схеме Static
@@ -93,6 +99,141 @@ CREATE TABLE Import.Registration(
     CONSTRAINT CK_WindSpeed CHECK (WindSpeed BETWEEN 0 AND 50)
 );
 
+CREATE TABLE Agg.Hours6(
+    StationId INT REFERENCES Import.Station(StationId),
+    RegistrationDate SMALLDATETIME,
+    TemperatureAVG NUMERIC(5, 2) NOT NULL,
+    TemperatureMAX NUMERIC(5, 2) NOT NULL,
+    TemperatureMIN NUMERIC(5, 2) NOT NULL,
+    DewPointAVG NUMERIC(5, 2) NOT NULL,
+    DewPointMAX NUMERIC(5, 2) NOT NULL,
+    DewPointMIN NUMERIC(5, 2) NOT NULL,
+    PressureAVG NUMERIC(6, 2) NOT NULL,
+    PressureMAX NUMERIC(6, 2) NOT NULL,
+    PressureMIN NUMERIC(6, 2) NOT NULL,
+    PressureStationLevelAVG NUMERIC(6, 2) NOT NULL,
+    PressureStationLevelMAX NUMERIC(6, 2) NOT NULL,
+    PressureStationLevelMIN NUMERIC(6, 2) NOT NULL,
+    HumidityAVG NUMERIC(5, 2) NOT NULL,
+    HumidityMAX NUMERIC(5, 2) NOT NULL,
+    HumidityMIN NUMERIC(5, 2) NOT NULL,
+    VisibleRangeAVG NUMERIC(6, 2) NOT NULL,
+    VisibleRangeMAX NUMERIC(6, 2) NOT NULL,
+    VisibleRangeMIN NUMERIC(6, 2) NOT NULL,
+    WindSpeedAVG NUMERIC(5, 2) NOT NULL,
+    WindSpeedMAX NUMERIC(5, 2) NOT NULL,
+    WindSpeedMIN NUMERIC(5, 2) NOT NULL,
+    CONSTRAINT PK_Hours6 PRIMARY KEY (StationId, RegistrationDate)
+);
+
+CREATE TABLE Agg.Hours12(
+    StationId INT REFERENCES Import.Station(StationId),
+    RegistrationDate SMALLDATETIME,
+    TemperatureAVG NUMERIC(5, 2) NOT NULL,
+    TemperatureMAX NUMERIC(5, 2) NOT NULL,
+    TemperatureMIN NUMERIC(5, 2) NOT NULL,
+    DewPointAVG NUMERIC(5, 2) NOT NULL,
+    DewPointMAX NUMERIC(5, 2) NOT NULL,
+    DewPointMIN NUMERIC(5, 2) NOT NULL,
+    PressureAVG NUMERIC(6, 2) NOT NULL,
+    PressureMAX NUMERIC(6, 2) NOT NULL,
+    PressureMIN NUMERIC(6, 2) NOT NULL,
+    PressureStationLevelAVG NUMERIC(6, 2) NOT NULL,
+    PressureStationLevelMAX NUMERIC(6, 2) NOT NULL,
+    PressureStationLevelMIN NUMERIC(6, 2) NOT NULL,
+    HumidityAVG NUMERIC(5, 2) NOT NULL,
+    HumidityMAX NUMERIC(5, 2) NOT NULL,
+    HumidityMIN NUMERIC(5, 2) NOT NULL,
+    VisibleRangeAVG NUMERIC(6, 2) NOT NULL,
+    VisibleRangeMAX NUMERIC(6, 2) NOT NULL,
+    VisibleRangeMIN NUMERIC(6, 2) NOT NULL,
+    WindSpeedAVG NUMERIC(5, 2) NOT NULL,
+    WindSpeedMAX NUMERIC(5, 2) NOT NULL,
+    WindSpeedMIN NUMERIC(5, 2) NOT NULL,
+    CONSTRAINT PK_Hours12 PRIMARY KEY (StationId, RegistrationDate)
+);
+
+CREATE TABLE Agg.Days(
+    StationId INT REFERENCES Import.Station(StationId),
+    RegistrationDate DATE,
+    TemperatureAVG NUMERIC(5, 2) NOT NULL,
+    TemperatureMAX NUMERIC(5, 2) NOT NULL,
+    TemperatureMIN NUMERIC(5, 2) NOT NULL,
+    DewPointAVG NUMERIC(5, 2) NOT NULL,
+    DewPointMAX NUMERIC(5, 2) NOT NULL,
+    DewPointMIN NUMERIC(5, 2) NOT NULL,
+    PressureAVG NUMERIC(6, 2) NOT NULL,
+    PressureMAX NUMERIC(6, 2) NOT NULL,
+    PressureMIN NUMERIC(6, 2) NOT NULL,
+    PressureStationLevelAVG NUMERIC(6, 2) NOT NULL,
+    PressureStationLevelMAX NUMERIC(6, 2) NOT NULL,
+    PressureStationLevelMIN NUMERIC(6, 2) NOT NULL,
+    HumidityAVG NUMERIC(5, 2) NOT NULL,
+    HumidityMAX NUMERIC(5, 2) NOT NULL,
+    HumidityMIN NUMERIC(5, 2) NOT NULL,
+    VisibleRangeAVG NUMERIC(6, 2) NOT NULL,
+    VisibleRangeMAX NUMERIC(6, 2) NOT NULL,
+    VisibleRangeMIN NUMERIC(6, 2) NOT NULL,
+    WindSpeedAVG NUMERIC(5, 2) NOT NULL,
+    WindSpeedMAX NUMERIC(5, 2) NOT NULL,
+    WindSpeedMIN NUMERIC(5, 2) NOT NULL,
+    CONSTRAINT PK_Days PRIMARY KEY (StationId, RegistrationDate)
+);
+
+CREATE TABLE Agg.Weeks(
+    StationId INT REFERENCES Import.Station(StationId),
+    RegistrationDate DATE,
+    TemperatureAVG NUMERIC(5, 2) NOT NULL,
+    TemperatureMAX NUMERIC(5, 2) NOT NULL,
+    TemperatureMIN NUMERIC(5, 2) NOT NULL,
+    DewPointAVG NUMERIC(5, 2) NOT NULL,
+    DewPointMAX NUMERIC(5, 2) NOT NULL,
+    DewPointMIN NUMERIC(5, 2) NOT NULL,
+    PressureAVG NUMERIC(6, 2) NOT NULL,
+    PressureMAX NUMERIC(6, 2) NOT NULL,
+    PressureMIN NUMERIC(6, 2) NOT NULL,
+    PressureStationLevelAVG NUMERIC(6, 2) NOT NULL,
+    PressureStationLevelMAX NUMERIC(6, 2) NOT NULL,
+    PressureStationLevelMIN NUMERIC(6, 2) NOT NULL,
+    HumidityAVG NUMERIC(5, 2) NOT NULL,
+    HumidityMAX NUMERIC(5, 2) NOT NULL,
+    HumidityMIN NUMERIC(5, 2) NOT NULL,
+    VisibleRangeAVG NUMERIC(6, 2) NOT NULL,
+    VisibleRangeMAX NUMERIC(6, 2) NOT NULL,
+    VisibleRangeMIN NUMERIC(6, 2) NOT NULL,
+    WindSpeedAVG NUMERIC(5, 2) NOT NULL,
+    WindSpeedMAX NUMERIC(5, 2) NOT NULL,
+    WindSpeedMIN NUMERIC(5, 2) NOT NULL,
+    CONSTRAINT PK_Weeks PRIMARY KEY (StationId, RegistrationDate)
+);
+
+CREATE TABLE Agg.Months(
+    StationId INT REFERENCES Import.Station(StationId),
+    RegistrationDate DATE,
+    TemperatureAVG NUMERIC(5, 2) NOT NULL,
+    TemperatureMAX NUMERIC(5, 2) NOT NULL,
+    TemperatureMIN NUMERIC(5, 2) NOT NULL,
+    DewPointAVG NUMERIC(5, 2) NOT NULL,
+    DewPointMAX NUMERIC(5, 2) NOT NULL,
+    DewPointMIN NUMERIC(5, 2) NOT NULL,
+    PressureAVG NUMERIC(6, 2) NOT NULL,
+    PressureMAX NUMERIC(6, 2) NOT NULL,
+    PressureMIN NUMERIC(6, 2) NOT NULL,
+    PressureStationLevelAVG NUMERIC(6, 2) NOT NULL,
+    PressureStationLevelMAX NUMERIC(6, 2) NOT NULL,
+    PressureStationLevelMIN NUMERIC(6, 2) NOT NULL,
+    HumidityAVG NUMERIC(5, 2) NOT NULL,
+    HumidityMAX NUMERIC(5, 2) NOT NULL,
+    HumidityMIN NUMERIC(5, 2) NOT NULL,
+    VisibleRangeAVG NUMERIC(6, 2) NOT NULL,
+    VisibleRangeMAX NUMERIC(6, 2) NOT NULL,
+    VisibleRangeMIN NUMERIC(6, 2) NOT NULL,
+    WindSpeedAVG NUMERIC(5, 2) NOT NULL,
+    WindSpeedMAX NUMERIC(5, 2) NOT NULL,
+    WindSpeedMIN NUMERIC(5, 2) NOT NULL,
+    CONSTRAINT PK_Months PRIMARY KEY (StationId, RegistrationDate)
+);
+
 -- Если уже существуют логин и пользователь БД с совпадающими названиями - они будут удалены
 -- Проверка существования логина
 IF EXISTS (SELECT * FROM sys.server_principals WHERE name = 'weather_user_login')
@@ -111,14 +252,11 @@ GRANT SELECT, EXECUTE ON SCHEMA::Static TO weather_user;
 
 -- Разрешает weather_user чтение, обновление, удаление записей а также вызов функций/процедув в рамках схемы Import
 GRANT SELECT, UPDATE, DELETE, EXECUTE ON SCHEMA::Import TO weather_user;
-
--- НО, теперь нужно запретить weather_user удалять/обновлять записи в таблице Import.Registration
-
--- Оба варианта НЕ запрещают weather_user удалять/обновлять записи в Import.Registration (Почему?)
--- REVOKE UPDATE, DELETE ON OBJECT::Import.Registration TO weather_user;
-
 -- Работает
 DENY UPDATE, DELETE ON OBJECT::Import.Registration TO weather_user;
+
+-- Разрешает weather_user запись, чтение и запуск хранимых процедур в схеме Agg
+GRANT INSERT, SELECT, EXECUTE ON SCHEMA::Agg TO weather_user;
 
 -- Хранимые процедуры
 -- Вставка в БД сведений о одной стране из JSON (TotalArea вычисляется во время вставки)
@@ -199,6 +337,146 @@ CREATE OR ALTER PROCEDURE Import.insert_station_json(@json NVARCHAR(MAX)) AS
     END;
 GO
 
+-- агрегация зарегистрированных данных
+CREATE PROCEDURE Import.agg_values_json(@json NVARCHAR(MAX), @StationId INT) AS
+    BEGIN
+        -- Месяцы
+        INSERT INTO Agg.Months(
+            StationId, RegistrationDate, TemperatureAVG, TemperatureMAX, TemperatureMIN,
+            DewPointAVG, DewPointMAX, DewPointMIN, PressureAVG, PressureMAX, PressureMIN,
+            PressureStationLevelAVG, PressureStationLevelMAX, PressureStationLevelMIN, HumidityAVG, HumidityMAX, HumidityMIN,
+            VisibleRangeAVG, VisibleRangeMAX, VisibleRangeMIN, WindSpeedAVG, WindSpeedMAX, WindSpeedMIN)
+        SELECT
+            @StationId, MAX(CAST(R.RegistrationDate AS DATE)) AS [Date],
+	        AVG(R.Temperature) AS [TAvg], MAX(R.Temperature) AS [TMax], MIN(R.Temperature) AS [TMin],
+	        AVG(R.DewPoint), MAX(R.DewPoint), MIN(R.DewPoint),
+	        AVG(R.Pressure), MAX(R.Pressure), MIN(R.Pressure),
+	        AVG(R.PressureStationLevel), MAX(R.PressureStationLevel), MIN(R.PressureStationLevel),
+	        AVG(R.Humidity), MAX(R.Humidity), MIN(R.Humidity),
+	        AVG(R.VisibleRange), MAX(R.VisibleRange), MIN(R.VisibleRange),
+	        AVG(R.WindSpeed), MAX(R.WindSpeed), MIN(R.WindSpeed)
+        FROM OPENJSON(@json) WITH (
+             StationId INT '$.StationId',
+             RegistrationDate DATE '$.RegistrationDate',
+             Temperature NUMERIC(5, 2) '$.Temperature',
+             DewPoint NUMERIC(5, 2) '$.DewPoint',
+             Pressure NUMERIC(6, 2) '$.Pressure',
+             PressureStationLevel NUMERIC(6, 2) '$.PressureStationLevel',
+             Humidity NUMERIC(5, 2) '$.Humidity',
+             VisibleRange NUMERIC(6, 2) '$.VisibleRange',
+             WindSpeed NUMERIC(5, 2) '$.WindSpeed'
+        ) AS R
+        GROUP BY R.StationId, YEAR(R.RegistrationDate), MONTH(R.RegistrationDate);
+
+        -- Недели
+        INSERT INTO Agg.Weeks(
+            StationId, RegistrationDate, TemperatureAVG, TemperatureMAX, TemperatureMIN,
+            DewPointAVG, DewPointMAX, DewPointMIN, PressureAVG, PressureMAX, PressureMIN,
+            PressureStationLevelAVG, PressureStationLevelMAX, PressureStationLevelMIN, HumidityAVG, HumidityMAX, HumidityMIN,
+            VisibleRangeAVG, VisibleRangeMAX, VisibleRangeMIN, WindSpeedAVG, WindSpeedMAX, WindSpeedMIN)
+        SELECT
+            @StationId, MAX(CAST(R.RegistrationDate AS DATE)) AS [Date],
+	        AVG(R.Temperature) AS [TAvg], MAX(R.Temperature) AS [TMax], MIN(R.Temperature) AS [TMin],
+	        AVG(R.DewPoint), MAX(R.DewPoint), MIN(R.DewPoint),
+	        AVG(R.Pressure), MAX(R.Pressure), MIN(R.Pressure),
+	        AVG(R.PressureStationLevel), MAX(R.PressureStationLevel), MIN(R.PressureStationLevel),
+	        AVG(R.Humidity), MAX(R.Humidity), MIN(R.Humidity),
+	        AVG(R.VisibleRange), MAX(R.VisibleRange), MIN(R.VisibleRange),
+	        AVG(R.WindSpeed), MAX(R.WindSpeed), MIN(R.WindSpeed)
+        FROM OPENJSON(@json) WITH (
+             RegistrationDate DATE '$.RegistrationDate',
+             Temperature NUMERIC(5, 2) '$.Temperature',
+             DewPoint NUMERIC(5, 2) '$.DewPoint',
+             Pressure NUMERIC(6, 2) '$.Pressure',
+             PressureStationLevel NUMERIC(6, 2) '$.PressureStationLevel',
+             Humidity NUMERIC(5, 2) '$.Humidity',
+             VisibleRange NUMERIC(6, 2) '$.VisibleRange',
+             WindSpeed NUMERIC(5, 2) '$.WindSpeed'
+        ) AS R
+        GROUP BY YEAR(R.RegistrationDate), DATEPART(Week, (R.RegistrationDate));
+        -- Дни
+        INSERT INTO Agg.Days(
+            StationId, RegistrationDate, TemperatureAVG, TemperatureMAX, TemperatureMIN,
+            DewPointAVG, DewPointMAX, DewPointMIN, PressureAVG, PressureMAX, PressureMIN,
+            PressureStationLevelAVG, PressureStationLevelMAX, PressureStationLevelMIN, HumidityAVG, HumidityMAX, HumidityMIN,
+            VisibleRangeAVG, VisibleRangeMAX, VisibleRangeMIN, WindSpeedAVG, WindSpeedMAX, WindSpeedMIN)
+        SELECT
+            @StationId, MAX(CAST(R.RegistrationDate AS DATE)) AS [Date],
+	        AVG(R.Temperature) AS [TAvg], MAX(R.Temperature) AS [TMax], MIN(R.Temperature) AS [TMin],
+	        AVG(R.DewPoint), MAX(R.DewPoint), MIN(R.DewPoint),
+	        AVG(R.Pressure), MAX(R.Pressure), MIN(R.Pressure),
+	        AVG(R.PressureStationLevel), MAX(R.PressureStationLevel), MIN(R.PressureStationLevel),
+	        AVG(R.Humidity), MAX(R.Humidity), MIN(R.Humidity),
+	        AVG(R.VisibleRange), MAX(R.VisibleRange), MIN(R.VisibleRange),
+	        AVG(R.WindSpeed), MAX(R.WindSpeed), MIN(R.WindSpeed)
+        FROM OPENJSON(@json) WITH (
+             RegistrationDate DATE '$.RegistrationDate',
+             Temperature NUMERIC(5, 2) '$.Temperature',
+             DewPoint NUMERIC(5, 2) '$.DewPoint',
+             Pressure NUMERIC(6, 2) '$.Pressure',
+             PressureStationLevel NUMERIC(6, 2) '$.PressureStationLevel',
+             Humidity NUMERIC(5, 2) '$.Humidity',
+             VisibleRange NUMERIC(6, 2) '$.VisibleRange',
+             WindSpeed NUMERIC(5, 2) '$.WindSpeed'
+        ) AS R
+        GROUP BY YEAR(R.RegistrationDate), MONTH(R.RegistrationDate),  DAY(R.RegistrationDate);
+        -- 12 часов
+        INSERT INTO Agg.Hours12(
+            StationId, RegistrationDate, TemperatureAVG, TemperatureMAX, TemperatureMIN,
+            DewPointAVG, DewPointMAX, DewPointMIN, PressureAVG, PressureMAX, PressureMIN,
+            PressureStationLevelAVG, PressureStationLevelMAX, PressureStationLevelMIN, HumidityAVG, HumidityMAX, HumidityMIN,
+            VisibleRangeAVG, VisibleRangeMAX, VisibleRangeMIN, WindSpeedAVG, WindSpeedMAX, WindSpeedMIN)
+        SELECT
+            @StationId, MAX(SMALLDATETIMEFROMPARTS(YEAR(R.RegistrationDate), MONTH(R.RegistrationDate),
+            DAY(R.RegistrationDate), Import.hours_12(R.RegistrationDate),0)) AS [Date],
+	        AVG(R.Temperature) AS [TAvg], MAX(R.Temperature) AS [TMax], MIN(R.Temperature) AS [TMin],
+	        AVG(R.DewPoint), MAX(R.DewPoint), MIN(R.DewPoint),
+	        AVG(R.Pressure), MAX(R.Pressure), MIN(R.Pressure),
+	        AVG(R.PressureStationLevel), MAX(R.PressureStationLevel), MIN(R.PressureStationLevel),
+	        AVG(R.Humidity), MAX(R.Humidity), MIN(R.Humidity),
+	        AVG(R.VisibleRange), MAX(R.VisibleRange), MIN(R.VisibleRange),
+	        AVG(R.WindSpeed), MAX(R.WindSpeed), MIN(R.WindSpeed)
+        FROM OPENJSON(@json) WITH (
+             RegistrationDate DATE '$.RegistrationDate',
+             Temperature NUMERIC(5, 2) '$.Temperature',
+             DewPoint NUMERIC(5, 2) '$.DewPoint',
+             Pressure NUMERIC(6, 2) '$.Pressure',
+             PressureStationLevel NUMERIC(6, 2) '$.PressureStationLevel',
+             Humidity NUMERIC(5, 2) '$.Humidity',
+             VisibleRange NUMERIC(6, 2) '$.VisibleRange',
+             WindSpeed NUMERIC(5, 2) '$.WindSpeed'
+        ) AS R
+        GROUP BY YEAR(R.RegistrationDate), MONTH(R.RegistrationDate),  DAY(R.RegistrationDate), Import.hours_12(R.RegistrationDate);
+        -- 6 часов
+        INSERT INTO Agg.Hours6(
+            StationId, RegistrationDate, TemperatureAVG, TemperatureMAX, TemperatureMIN,
+            DewPointAVG, DewPointMAX, DewPointMIN, PressureAVG, PressureMAX, PressureMIN,
+            PressureStationLevelAVG, PressureStationLevelMAX, PressureStationLevelMIN, HumidityAVG, HumidityMAX, HumidityMIN,
+            VisibleRangeAVG, VisibleRangeMAX, VisibleRangeMIN, WindSpeedAVG, WindSpeedMAX, WindSpeedMIN)
+        SELECT
+            @StationId, MAX(SMALLDATETIMEFROMPARTS(YEAR(R.RegistrationDate), MONTH(R.RegistrationDate),
+            DAY(R.RegistrationDate), Import.hours_6(R.RegistrationDate),0)) AS [Date],
+	        AVG(R.Temperature) AS [TAvg], MAX(R.Temperature) AS [TMax], MIN(R.Temperature) AS [TMin],
+	        AVG(R.DewPoint), MAX(R.DewPoint), MIN(R.DewPoint),
+	        AVG(R.Pressure), MAX(R.Pressure), MIN(R.Pressure),
+	        AVG(R.PressureStationLevel), MAX(R.PressureStationLevel), MIN(R.PressureStationLevel),
+	        AVG(R.Humidity), MAX(R.Humidity), MIN(R.Humidity),
+	        AVG(R.VisibleRange), MAX(R.VisibleRange), MIN(R.VisibleRange),
+	        AVG(R.WindSpeed), MAX(R.WindSpeed), MIN(R.WindSpeed)
+        FROM OPENJSON(@json) WITH (
+             RegistrationDate DATE '$.RegistrationDate',
+             Temperature NUMERIC(5, 2) '$.Temperature',
+             DewPoint NUMERIC(5, 2) '$.DewPoint',
+             Pressure NUMERIC(6, 2) '$.Pressure',
+             PressureStationLevel NUMERIC(6, 2) '$.PressureStationLevel',
+             Humidity NUMERIC(5, 2) '$.Humidity',
+             VisibleRange NUMERIC(6, 2) '$.VisibleRange',
+             WindSpeed NUMERIC(5, 2) '$.WindSpeed'
+        ) AS R
+        GROUP BY YEAR(R.RegistrationDate), MONTH(R.RegistrationDate),  DAY(R.RegistrationDate), Import.hours_6(R.RegistrationDate);
+    END
+GO
+
 -- Регистрация набора метеорологических показателей
 CREATE OR ALTER PROCEDURE Import.insert_registration_json(@json NVARCHAR(MAX), @StationId INT) AS
     BEGIN
@@ -221,6 +499,8 @@ CREATE OR ALTER PROCEDURE Import.insert_registration_json(@json NVARCHAR(MAX), @
             WindDirectionId INT '$.WindDirectionId',
             CloudinessId INT  '$.CloudinessId'
         ) AS J;
+
+        EXEC Import.agg_values_json @json = @json, @StationId = @StationId;
     END;
 GO
 
@@ -385,9 +665,9 @@ BEGIN
 	) AS T
 	WHERE StationId = @StationId
 END
-
--- Триггер для автомитическогог вычисления суммарной площади страны
 GO
+
+-- Триггер для автомитического вычисления суммарной площади страны
 CREATE TRIGGER Import.calculate_total ON Import.Country AFTER UPDATE, INSERT AS
     BEGIN
 	    SET NOCOUNT ON;
@@ -540,6 +820,127 @@ BEGIN
 END
 GO
 
+-- Получить метеоданные, агрегированные за месяц
+CREATE FUNCTION Agg.months_json(@StationId INT) RETURNS NVARCHAR(MAX) AS
+    BEGIN
+        RETURN (
+        SELECT
+            StationId, RegistrationDate, TemperatureAVG, TemperatureMAX, TemperatureMIN, DewPointAVG, DewPointMAX, DewPointMIN,
+            PressureAVG, PressureMAX, PressureMIN, PressureStationLevelAVG, PressureStationLevelMAX, PressureStationLevelMIN,
+            HumidityAVG, HumidityMAX, HumidityMIN, VisibleRangeAVG, VisibleRangeMAX, VisibleRangeMIN, WindSpeedAVG, WindSpeedMAX, WindSpeedMIN
+        FROM Agg.Months
+        WHERE StationId = @StationId FOR JSON PATH);
+    END
+GO
+-- Получить метеоданные, агрегированные за месяц в заданном диапозоне
+CREATE FUNCTION Agg.months_json_diapason(@StationId INT, @d_begin DATETIME, @d_end DATETIME) RETURNS NVARCHAR(MAX) AS
+    BEGIN
+        RETURN (
+        SELECT
+            StationId, RegistrationDate, TemperatureAVG, TemperatureMAX, TemperatureMIN, DewPointAVG, DewPointMAX, DewPointMIN,
+            PressureAVG, PressureMAX, PressureMIN, PressureStationLevelAVG, PressureStationLevelMAX, PressureStationLevelMIN,
+            HumidityAVG, HumidityMAX, HumidityMIN, VisibleRangeAVG, VisibleRangeMAX, VisibleRangeMIN, WindSpeedAVG, WindSpeedMAX, WindSpeedMIN
+        FROM Agg.Months
+        WHERE StationId = @StationId AND RegistrationDate BETWEEN @d_begin AND @d_end FOR JSON PATH);
+    END
+GO
+-- Получить метеоданные, агрегированные за неделю
+CREATE FUNCTION Agg.weeks_json(@StationId INT) RETURNS NVARCHAR(MAX) AS
+    BEGIN
+        RETURN (
+        SELECT
+            StationId, RegistrationDate, TemperatureAVG, TemperatureMAX, TemperatureMIN, DewPointAVG, DewPointMAX, DewPointMIN,
+            PressureAVG, PressureMAX, PressureMIN, PressureStationLevelAVG, PressureStationLevelMAX, PressureStationLevelMIN,
+            HumidityAVG, HumidityMAX, HumidityMIN, VisibleRangeAVG, VisibleRangeMAX, VisibleRangeMIN, WindSpeedAVG, WindSpeedMAX, WindSpeedMIN
+        FROM Agg.Weeks
+        WHERE StationId = @StationId FOR JSON PATH);
+    END
+GO
+-- Получить метеоданные, агрегированные за неделю в заданном диапозоне
+CREATE FUNCTION Agg.weeks_json_diapason(@StationId INT, @d_begin DATETIME, @d_end DATETIME) RETURNS NVARCHAR(MAX) AS
+    BEGIN
+        RETURN (
+        SELECT
+            StationId, RegistrationDate, TemperatureAVG, TemperatureMAX, TemperatureMIN, DewPointAVG, DewPointMAX, DewPointMIN,
+            PressureAVG, PressureMAX, PressureMIN, PressureStationLevelAVG, PressureStationLevelMAX, PressureStationLevelMIN,
+            HumidityAVG, HumidityMAX, HumidityMIN, VisibleRangeAVG, VisibleRangeMAX, VisibleRangeMIN, WindSpeedAVG, WindSpeedMAX, WindSpeedMIN
+        FROM Agg.Weeks
+        WHERE StationId = @StationId AND RegistrationDate BETWEEN @d_begin AND @d_end FOR JSON PATH);
+    END
+GO
+-- Получить метеоданные, агрегированные за день
+CREATE FUNCTION Agg.days_json(@StationId INT) RETURNS NVARCHAR(MAX) AS
+    BEGIN
+        RETURN (
+        SELECT
+            StationId, RegistrationDate, TemperatureAVG, TemperatureMAX, TemperatureMIN, DewPointAVG, DewPointMAX, DewPointMIN,
+            PressureAVG, PressureMAX, PressureMIN, PressureStationLevelAVG, PressureStationLevelMAX, PressureStationLevelMIN,
+            HumidityAVG, HumidityMAX, HumidityMIN, VisibleRangeAVG, VisibleRangeMAX, VisibleRangeMIN, WindSpeedAVG, WindSpeedMAX, WindSpeedMIN
+        FROM Agg.Days
+        WHERE StationId = @StationId FOR JSON PATH);
+    END
+GO
+-- Получить метеоданные, агрегированные за день в заданном диапозоне
+CREATE FUNCTION Agg.days_json_diapason(@StationId INT, @d_begin DATETIME, @d_end DATETIME) RETURNS NVARCHAR(MAX) AS
+    BEGIN
+        RETURN (
+        SELECT
+            StationId, RegistrationDate, TemperatureAVG, TemperatureMAX, TemperatureMIN, DewPointAVG, DewPointMAX, DewPointMIN,
+            PressureAVG, PressureMAX, PressureMIN, PressureStationLevelAVG, PressureStationLevelMAX, PressureStationLevelMIN,
+            HumidityAVG, HumidityMAX, HumidityMIN, VisibleRangeAVG, VisibleRangeMAX, VisibleRangeMIN, WindSpeedAVG, WindSpeedMAX, WindSpeedMIN
+        FROM Agg.Days
+        WHERE StationId = @StationId AND RegistrationDate BETWEEN @d_begin AND @d_end FOR JSON PATH);
+    END
+GO
+-- Получить метеоданные, агрегированные за 12 часов
+CREATE FUNCTION Agg.hours12_json(@StationId INT) RETURNS NVARCHAR(MAX) AS
+    BEGIN
+        RETURN (
+        SELECT
+            StationId, RegistrationDate, TemperatureAVG, TemperatureMAX, TemperatureMIN, DewPointAVG, DewPointMAX, DewPointMIN,
+            PressureAVG, PressureMAX, PressureMIN, PressureStationLevelAVG, PressureStationLevelMAX, PressureStationLevelMIN,
+            HumidityAVG, HumidityMAX, HumidityMIN, VisibleRangeAVG, VisibleRangeMAX, VisibleRangeMIN, WindSpeedAVG, WindSpeedMAX, WindSpeedMIN
+        FROM Agg.Hours12
+        WHERE StationId = @StationId FOR JSON PATH);
+    END
+GO
+-- Получить метеооданные, агрегированные за 12 часов в заданном диапозоне
+CREATE FUNCTION Agg.hours12_json_diapason(@StationId INT, @d_begin DATETIME, @d_end DATETIME) RETURNS NVARCHAR(MAX) AS
+    BEGIN
+        RETURN (
+        SELECT
+            StationId, RegistrationDate, TemperatureAVG, TemperatureMAX, TemperatureMIN, DewPointAVG, DewPointMAX, DewPointMIN,
+            PressureAVG, PressureMAX, PressureMIN, PressureStationLevelAVG, PressureStationLevelMAX, PressureStationLevelMIN,
+            HumidityAVG, HumidityMAX, HumidityMIN, VisibleRangeAVG, VisibleRangeMAX, VisibleRangeMIN, WindSpeedAVG, WindSpeedMAX, WindSpeedMIN
+        FROM Agg.Hours12
+        WHERE StationId = @StationId AND RegistrationDate BETWEEN @d_begin AND @d_end FOR JSON PATH);
+    END
+GO
+-- Получить метеоданные, агрегированные за 6 часов
+CREATE FUNCTION Agg.hours6_json(@StationId INT) RETURNS NVARCHAR(MAX) AS
+    BEGIN
+        RETURN (
+        SELECT
+            StationId, RegistrationDate, TemperatureAVG, TemperatureMAX, TemperatureMIN, DewPointAVG, DewPointMAX, DewPointMIN,
+            PressureAVG, PressureMAX, PressureMIN, PressureStationLevelAVG, PressureStationLevelMAX, PressureStationLevelMIN,
+            HumidityAVG, HumidityMAX, HumidityMIN, VisibleRangeAVG, VisibleRangeMAX, VisibleRangeMIN, WindSpeedAVG, WindSpeedMAX, WindSpeedMIN
+        FROM Agg.Hours6
+        WHERE StationId = @StationId FOR JSON PATH);
+    END
+GO
+-- Получить метеооданные, агрегированные за 6 часов в заданном диапозоне
+CREATE FUNCTION Agg.hours6_json_diapason(@StationId INT, @d_begin DATETIME, @d_end DATETIME) RETURNS NVARCHAR(MAX) AS
+    BEGIN
+        RETURN (
+        SELECT
+            StationId, RegistrationDate, TemperatureAVG, TemperatureMAX, TemperatureMIN, DewPointAVG, DewPointMAX, DewPointMIN,
+            PressureAVG, PressureMAX, PressureMIN, PressureStationLevelAVG, PressureStationLevelMAX, PressureStationLevelMIN,
+            HumidityAVG, HumidityMAX, HumidityMIN, VisibleRangeAVG, VisibleRangeMAX, VisibleRangeMIN, WindSpeedAVG, WindSpeedMAX, WindSpeedMIN
+        FROM Agg.Hours6
+        WHERE StationId = @StationId AND RegistrationDate BETWEEN @d_begin AND @d_end FOR JSON PATH);
+    END
+GO
+
 -- Получить зарегистрированные на метеостанции данные в формате XML
 CREATE OR ALTER FUNCTION Import.registration_xml(@StationId INT) RETURNS NVARCHAR(MAX) AS
 BEGIN
@@ -588,6 +989,24 @@ BEGIN
         );
 END
 GO
+
+GO
+CREATE FUNCTION Import.hours_12(@RegDate DATETIME) RETURNS INT AS
+BEGIN
+    RETURN CASE  WHEN DATEPART(HOUR, @RegDate) BETWEEN 1 AND 12 THEN 12 ELSE 0 END
+END
+GO
+CREATE FUNCTION Import.hours_6(@RegDate DATETIME) RETURNS INT AS
+BEGIN
+    RETURN
+	  CASE
+	    WHEN DATEPART(HOUR, @RegDate) BETWEEN 1 AND 6 THEN 6
+		WHEN DATEPART(HOUR, @RegDate) BETWEEN 7 AND 12 THEN 12
+		WHEN DATEPART(HOUR, @RegDate) BETWEEN 13 AND 18 THEN 18
+	    ELSE 0
+	  END
+END
+GO
 -- Заполнение статических таблиц
 -- Направление ветра
 INSERT INTO Static.WindDirection(Direction, Mark) VALUES (N'Ветер, дующий с западо-юго-запада', N'ЗЮЗ');
@@ -618,4 +1037,4 @@ INSERT INTO Static.Cloudiness(CloudinessLevel, Octane) VALUES (N'60%.', N'5 ок
 INSERT INTO Static.Cloudiness(CloudinessLevel, Octane) VALUES (N'Небо не видно из-за тумана и/или других метеорологических явлений.', N'Из-за атмосферных явлений небо не видно');
 INSERT INTO Static.Cloudiness(CloudinessLevel, Octane) VALUES (N'50%.', N'4 октанта');
 INSERT INTO Static.Cloudiness(CloudinessLevel, Octane) VALUES (N'10%  или менее, но не 0', N'Не более 1 октанта, но больше 0');
-INSERT INTO Static.Cloudiness(CloudinessLevel, Octane) VALUES (N'40%.', N'3 октанта')
+INSERT INTO Static.Cloudiness(CloudinessLevel, Octane) VALUES (N'40%.', N'3 октанта');

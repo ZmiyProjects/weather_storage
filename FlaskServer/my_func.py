@@ -24,6 +24,9 @@ def check_json_in(true_keys: list, values: dict) -> bool:
 
 
 def simple_get_values(engine, query: sql.text, **kwargs):
+    values = engine.execute(query, kwargs).fetchall()
+    if values[0][0] is None:
+        return jsonify('Неверный идентификатор!'), 400
     result = "".join([i[0] for i in engine.execute(query, kwargs).fetchall()])
     return jsonify(json.loads(result)), 200
 

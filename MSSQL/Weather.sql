@@ -17,6 +17,21 @@ CREATE SCHEMA Static
 GO
 CREATE SCHEMA Agg
 GO
+CREATE SCHEMA Auth
+GO
+
+CREATE TABLE Auth.RoleData(
+    RoleId INT PRIMARY KEY IDENTITY,
+    RoleName VARCHAR(50) NOT NULL UNIQUE
+);
+
+CREATE TABLE Auth.UserData(
+    UserId INT PRIMARY KEY IDENTITY,
+    UserLogin VARCHAR(30) NOT NULL UNIQUE,
+    PasswordHash VARCHAR(255) NOT NULL,
+    RegistrationDate DATETIME NOT NULL DEFAULT GETDATE(),
+    RoleId INT NOT NULL REFERENCES Auth.RoleData(RoleId)
+);
 
 -- Создание таблиц "только для чтения" в схеме Static
 CREATE TABLE Static.WindDirection(
@@ -32,7 +47,7 @@ CREATE TABLE Static.Cloudiness(
 );
 
 -- Создание таблиц в схеме Import
--- Возможго, стоит сделать "справочные" таблицы темпоральными
+-- Возможо, стоит сделать "справочные" таблицы темпоральными
 
 -- TotalArea - сумма LandArea и WaterArea
 CREATE TABLE Import.Country(
@@ -242,10 +257,125 @@ IF EXISTS (SELECT * FROM sys.server_principals WHERE name = 'weather_user_login'
 -- Проверка существования пользователя
 IF DATABASE_PRINCIPAL_ID('weather_user') IS NOT NULL
     DROP USER weather_user;
+GO
+CREATE OR ALTER FUNCTION Auth.users_json() RETURNS NVARCHAR(MAX) AS
+BEGIN
+    RETURN (
+        SELECT U.UserId, U.UserLogin, U.RegistrationDate, R.RoleId, R.RoleName FROM UserData AS U
+            JOIN RoleData R on U.RoleId = R.RoleId
+        FOR JSON PATH
+        );
+END
+GO
+CREATE OR ALTER FUNCTION Auth.one_user_json(@UserId INT) RETURNS NVARCHAR(MAX) AS
+BEGIN
+    RETURN (
+        SELECT U.UserId, U.UserLogin, U.RegistrationDate, R.RoleId, R.RoleName FROM UserData AS U
+            JOIN RoleData AS R on U.UserId = @UserId AND U.RoleId = R.RoleId
+        FOR JSON PATH
+        );
+END
+GO
+CREATE OR ALTER PROCEDURE Auth.insert_user(@UserLogin VARCHAR(30), @Password VARCHAR(50), @RoleId INT) AS
+    BEGIN
+        INSERT INTO Auth.UserData(UserLogin, PasswordHash, RoleId) VALUES (@UserLogin, HASHBYTES('SHA2_256', @Password), @RoleId);
+    END
+GO
+CREATE OR ALTER FUNCTION Auth.roles_json() RETURNS NVARCHAR(MAX) AS
+BEGIN
+    RETURN (
+        SELECT R.RoleId, R.RoleName, COUNT(U.UserId) AS RoleCount FROM RoleData AS R
+            LEFT JOIN UserData AS U on R.RoleId = U.RoleId
+        GROUP BY R.RoleId, R.RoleName
+        FOR JSON PATH
+        );
+END
+GO
+
+CREATE OR ALTER PROCEDURE Auth.delete_user(@UserId INT) AS
+    BEGIN
+        IF NOT EXISTS(SELECT * FROM Auth.UserData WHERE UserId = @UserId)
+            THROW 51009, N'Пользователь не существует!', 11;
+        DELETE FROM Auth.UserData WHERE UserId = @UserId;
+    END
+GO
+CREATE OR ALTER FUNCTION Auth.init_user(@UserName VARCHAR(50)) RETURNS VARCHAR(50) AS
+    BEGIN
+        RETURN (
+            SELECT R.RoleName FROM Auth.UserData AS U
+                JOIN Auth.RoleData AS R ON U.RoleId = R.RoleId AND U.UserLogin = @UserName
+            );
+    END
+GO
+CREATE OR ALTER PROCEDURE auth.update_user_json(@json NVARCHAR(MAX), @UserId INT) AS
+BEGIN
+    IF NOT EXISTS(SELECT * FROM Auth.UserData WHERE UserId = @UserId)
+        THROW 51002, N'Пользователь с заданным идентификатором отсутствует!', 11;
+    UPDATE Auth.UserData SET
+	    UserLogin = COALESCE(T.JUserLogin, UserLogin),
+		PasswordHash = COALESCE(HASHBYTES('SHA2_256', T.JPassword), PasswordHash),
+		RoleId = COALESCE(T.JRoleId, RoleId)
+	FROM (
+	    SELECT J.UserLogin AS JUserLogin, J.Password AS JPassword, J.RoleId As JRoleId
+		FROM OPENJSON(@json) WITH (
+		    UserLogin VARCHAR(50),
+			Password VARCHAR(30),
+			RoleId INT
+		) AS J
+	) AS T
+	WHERE UserId = @UserId;
+END
+GO
+
+CREATE OR ALTER PROCEDURE Auth.update_user
+    @UserId INT = NULL,
+    @NewLogin VARCHAR(30) = NULL,
+    @NewPassword VARCHAR(50) = NULL,
+    @RoleId INT = NULL
+AS
+    BEGIN
+        IF NOT EXISTS(SELECT * FROM Auth.UserData WHERE UserId = @UserId)
+            THROW 51009, N'Пользователь не существует!', 11;
+        ELSE
+            UPDATE Auth.UserData SET
+                UserLogin = COALESCE(@NewLogin, UserLogin),
+                PasswordHash = COALESCE(HASHBYTES('SHA2_256', @NewPassword), PasswordHash),
+                RoleId = COALESCE(@RoleId, RoleId)
+            WHERE UserId = @UserId;
+    END
+GO
+
+CREATE OR ALTER FUNCTION auth.select_user(@UserId INT) RETURNS NVARCHAR(MAX) AS
+    BEGIN
+        RETURN (
+            SELECT U.UserLogin, R.RoleName FROM Auth.UserData AS U
+                JOIN Auth.RoleData AS R ON U.RoleId = R.RoleId AND U.UserId = @UserId
+            FOR JSON PATH
+            );
+    END
+GO
+
+CREATE OR ALTER FUNCTION auth.check_password(@UserName VARCHAR(30), @Password VARCHAR(50)) RETURNS BIT AS
+BEGIN
+    IF EXISTS(SELECT * FROM Auth.UserData WHERE UserLogin = @UserName)
+        IF HASHBYTES('SHA2_256', @Password) = (SELECT PasswordHash FROM UserData WHERE UserLogin = @UserName)
+		    RETURN 1;
+		ELSE
+		  RETURN 0;
+    RETURN 0;
+END
+GO
+-- Создание пользователей и ролей уровля базы данных
+CREATE ROLE WeatherModerator;
+CREATE ROLE Customer;
 
 -- Создание пользователей и ограничение доступа
 CREATE LOGIN weather_user_login WITH PASSWORD = 'weatheruser';
 CREATE USER weather_user FOR LOGIN weather_user_login;
+
+--
+GRANT SELECT, EXECUTE ON SCHEMA::Auth TO weather_user;
+GRANT INSERT, UPDATE, DELETE ON Auth.UserData TO weather_user;
 
 -- Разрешиле weather_user только чтение в рамках схемы Static, прочие операции недоступны (проверено)
 GRANT SELECT, EXECUTE ON SCHEMA::Static TO weather_user;
@@ -1038,3 +1168,11 @@ INSERT INTO Static.Cloudiness(CloudinessLevel, Octane) VALUES (N'Небо не �
 INSERT INTO Static.Cloudiness(CloudinessLevel, Octane) VALUES (N'50%.', N'4 октанта');
 INSERT INTO Static.Cloudiness(CloudinessLevel, Octane) VALUES (N'10%  или менее, но не 0', N'Не более 1 октанта, но больше 0');
 INSERT INTO Static.Cloudiness(CloudinessLevel, Octane) VALUES (N'40%.', N'3 октанта');
+
+-- Пользователди уровня приложения
+INSERT INTO auth.RoleData(RoleName) VALUES ('Admin');
+INSERT INTO auth.RoleData(RoleName) VALUES ('Moderator');
+INSERT INTO auth.RoleData(RoleName) VALUES ('Customer');
+INSERT INTO auth.RoleData(RoleName) VALUES ('Station');
+
+EXEC auth.insert_user 'Administrator', 'password', 1;

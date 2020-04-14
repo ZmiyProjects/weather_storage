@@ -1,31 +1,87 @@
-from flask import Flask, request, jsonify, Response
-from sqlalchemy import create_engine, sql
-import sys
-import json
+from flask import Flask, request, Response, abort
+from sqlalchemy import create_engine
+from flask_httpauth import HTTPBasicAuth
 from datetime import datetime
-
-
+from functools import wraps
+from typing import List
 from my_func import *
+from structures import UserData
+
 
 app = Flask(__name__)
 app.config.from_object('config.MSSQLConfig')
 db = create_engine(app.config['DATABASE_URI'])
+auth = HTTPBasicAuth()
+
+
+def role_required(roles: List[str]):
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if UserData.get_role(db, request.authorization['username']) not in roles:
+                abort(403)
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
+
+
+@auth.verify_password
+def verify_password(username, password):
+    return UserData.check_password(db, username, password)
+
+
+# перечень принятых в системе ролей пользователей
+@app.route('/roles', methods=['GET'])
+@auth.login_required
+@role_required(['Admin'])
+def all_roles():
+    return UserData.get_roles(db)
+
+
+# Создание нового пользователя/извлечение сведений обо всех пользователях
+@app.route('/user', methods=['POST', 'GET'])
+@auth.login_required
+@role_required(['Admin'])
+def create_user():
+    if request.method == 'POST':
+        return UserData.insert(db, **request.get_json())
+    elif request.method == 'GET':
+        return UserData.get_all(db)
+
+
+# Извлечение/обновление/кдаление сведений о пользователе
+@app.route('/user/<int:user_id>', methods=['PATCH', 'DELETE', 'GET'])
+@auth.login_required
+@role_required(['Admin'])
+def change_user(user_id):
+    if request.method == 'PATCH':
+        return UserData.update(db, id=user_id, json=json.dumps(request.get_json()))
+    elif request.method == 'DELETE':
+        return UserData.delete(db, id=user_id)
+    elif request.method == 'GET':
+        return UserData.get_one(db, user_id)
 
 
 @app.route('/static/wind_direction', methods=['GET'])
+@auth.login_required
+@role_required(['Admin', 'Moderator', 'Customer'])
 def get_wind_direction():
     query = sql.text('SELECT Static.get_cloudiness_json()')
     return simple_get_values(db, query)
 
 
 @app.route('/static/cloudiness', methods=['GET'])
+@auth.login_required
+@role_required(['Admin', 'Moderator', 'Customer'])
 def get_cloudiness():
     query = sql.text('SELECT Static.get_wind_direction_json()')
     return simple_get_values(db, query)
 
 
 # Загрузка/извлечение сведений по всем известным странам
-@app.route('/country', methods=['POST', 'GET'])
+@app.route('/country', methods=['POST'])
+@auth.login_required
+@role_required(['Admin', 'Moderator'])
 def all_countries():
     if request.method == 'POST':
         struct = json.dumps(request.json)
@@ -33,22 +89,24 @@ def all_countries():
         with db.begin() as conn:
             conn.execute(query, json=struct)
         return {}, 201
-    elif request.method == 'GET':
+
+
+@app.route('/country', methods=['GET'])
+@auth.login_required
+@role_required(['Admin', 'Moderator'])
+def get_all_country():
+    if request.method == 'GET':
         query = sql.text('SELECT Import.country_json()')
         result = "".join([i[0] for i in db.execute(query).fetchall()])
         return jsonify(json.loads(result)), 200
 
 
 # Получение/обновление/удаление сведений по конкретной стране
-@app.route('/country/<int:country_id>', methods=['GET', 'PATCH', 'DELETE'])
-def get_country(country_id):
-    if request.method == 'GET':
-        query = sql.text('SELECT Import.one_country_json(:id)')
-        result = db.execute(query, id=country_id).fetchone()[0]
-        if result is None:
-            return jsonify(message='Страна с указанным идентификатором не существует!'), 400
-        return jsonify(*json.loads(result)), 200
-    elif request.method == 'DELETE':
+@app.route('/country/<int:country_id>', methods=['PATCH', 'DELETE'])
+@auth.login_required
+@role_required(['Admin', 'Moderator'])
+def one_country(country_id):
+    if request.method == 'DELETE':
         del_query = sql.text('EXEC Import.delete_country :id')
         try:
             simple_change(db, del_query, id=country_id)
@@ -67,8 +125,22 @@ def get_country(country_id):
             return {}, 400
 
 
+@app.route('/country/<int:country_id>', methods=['GET'])
+@auth.login_required
+@role_required(['Admin', 'Moderator', 'Customer'])
+def get_one_country(country_id):
+    if request.method == 'GET':
+        query = sql.text('SELECT Import.one_country_json(:id)')
+        result = db.execute(query, id=country_id).fetchone()[0]
+        if result is None:
+            return jsonify(message='Страна с указанным идентификатором не существует!'), 400
+        return jsonify(*json.loads(result)), 200
+
+
 # Загрузка/извлечение данных о регионах в рамках определенной страны
 @app.route('/country/<int:country_id>/region', methods=['POST', 'GET'])
+@auth.login_required
+@role_required(['Admin', 'Moderator'])
 def all_regions(country_id):
     if request.method == 'POST':
         struct = request.get_json()
@@ -82,15 +154,11 @@ def all_regions(country_id):
 
 
 # Получение/обновление/удаление сведений по конкретному региону
-@app.route('/region/<int:region_id>', methods=['GET', 'PATCH', 'DELETE'])
-def get_region(region_id):
-    if request.method == 'GET':
-        query = sql.text('SELECT Import.one_region_json(:id)')
-        result = db.execute(query, id=region_id).fetchone()[0]
-        if result is None:
-            return jsonify(message='Регион с указанным идентификатором не существует!'), 404
-        return jsonify(*json.loads(result)), 200
-    elif request.method == 'DELETE':
+@app.route('/region/<int:region_id>', methods=['PATCH', 'DELETE'])
+@auth.login_required
+@role_required(['Admin', 'Moderator'])
+def one_region(region_id):
+    if request.method == 'DELETE':
         del_query = sql.text('EXEC Import.delete_region :id')
         try:
             simple_change(db, del_query, id=region_id)
@@ -109,8 +177,22 @@ def get_region(region_id):
             return {}, 400
 
 
+@app.route('/region/<int:region_id>', methods=['GET'])
+@auth.login_required
+@role_required(['Admin', 'Moderator', 'Customer'])
+def get_one_region(region_id):
+    if request.method == 'GET':
+        query = sql.text('SELECT Import.one_region_json(:id)')
+        result = db.execute(query, id=region_id).fetchone()[0]
+        if result is None:
+            return jsonify(message='Регион с указанным идентификатором не существует!'), 404
+        return jsonify(*json.loads(result)), 200
+
+
 # Загрузка/извлечение данных о населенных пунктах в рамках определенной страны
-@app.route('/region/<int:region_id>/locality', methods=['POST', 'GET'])
+@app.route('/region/<int:region_id>/locality', methods=['POST'])
+@auth.login_required
+@role_required(['Admin', 'Moderator'])
 def all_locality(region_id):
     if request.method == 'POST':
         struct = request.json
@@ -118,21 +200,23 @@ def all_locality(region_id):
         if simple_import_values(db, query, json=json.dumps(struct), id=region_id):
             return {}, 201
         return jsonify(message='exception!'), 400
-    elif request.method == 'GET':
+
+
+@app.route('/region/<int:region_id>/locality', methods=['GET'])
+@auth.login_required
+@role_required(['Admin', 'Moderator', 'Customer'])
+def get_all_locality(region_id):
+    if request.method == 'GET':
         query = sql.text('SELECT Import.locality_json()')
         return simple_get_values(db, query, id=region_id)
 
 
 # Получение/обновление/удаление сведений по конкретному населённому пункту
-@app.route('/locality/<int:locality_id>', methods=['POST', 'PATCH', 'DELETE'])
-def get_locality(locality_id):
-    if request.method == 'GET':
-        query = sql.text('SELECT Import.one_locality_json(:id)')
-        result = db.execute(query, id=locality_id).fetchone()[0]
-        if result is None:
-            return jsonify(message='Населённый пункт с указанным идентификатором не существует!'), 404
-        return jsonify(*json.loads(result)), 200
-    elif request.method == 'DELETE':
+@app.route('/locality/<int:locality_id>', methods=['PATCH', 'DELETE'])
+@auth.login_required
+@role_required(['Admin', 'Moderator'])
+def one_locality(locality_id):
+    if request.method == 'DELETE':
         del_query = sql.text('EXEC Import.delete_locality :id')
         try:
             simple_change(db, del_query, id=locality_id)
@@ -151,8 +235,22 @@ def get_locality(locality_id):
             return {}, 400
 
 
+@app.route('/locality/<int:locality_id>', methods=['GET'])
+@auth.login_required
+@role_required(['Admin', 'Moderator', 'Customer'])
+def get_one_locality(locality_id):
+    if request.method == 'GET':
+        query = sql.text('SELECT Import.one_locality_json(:id)')
+        result = db.execute(query, id=locality_id).fetchone()[0]
+        if result is None:
+            return jsonify(message='Населённый пункт с указанным идентификатором не существует!'), 404
+        return jsonify(*json.loads(result)), 200
+
+
 # Загрузка/извлечение данных о всех обслуживающих метеостанции организациях
-@app.route('/organization', methods=['POST', 'GET'])
+@app.route('/organization', methods=['POST'])
+@auth.login_required
+@role_required(['Admin', 'Moderator'])
 def all_organizations():
     if request.method == 'POST':
         struct = request.json
@@ -161,18 +259,23 @@ def all_organizations():
         if simple_import_values(db, query, json=json.dumps(struct)):
             return {}, 201
         return {}, 400
-    elif request.method == 'GET':
+
+
+@app.route('/organization', methods=['GET'])
+@auth.login_required
+@role_required(['Admin', 'Moderator', 'Customer'])
+def get_all_organization():
+    if request.method == 'GET':
         query = sql.text('SELECT Import.organization_json()')
         return simple_get_values(db, query)
 
 
 # Получение/обновление/удаление сведений о конкретной организации
-@app.route('/organization/<int:organization_id>', methods=['GET', 'PATCH', 'DELETE'])
-def get_organization(organization_id):
-    if request.method == 'GET':
-        query = sql.text('SELECT Import.one_organization_json(:id)')
-        return simple_get_values(db, query, id=organization_id)
-    elif request.method == 'DELETE':
+@app.route('/organization/<int:organization_id>', methods=['PATCH', 'DELETE'])
+@auth.login_required
+@role_required(['Admin', 'Moderator'])
+def one_organization(organization_id):
+    if request.method == 'DELETE':
         del_query = sql.text('EXEC Import.delete_organization :id')
         try:
             simple_change(db, del_query, id=organization_id)
@@ -191,27 +294,40 @@ def get_organization(organization_id):
             return {}, 400
 
 
-@app.route('/station', methods=['GET', 'POST'])
+@app.route('/organization/<int:organization_id>', methods=['GET'])
+@auth.login_required
+@role_required(['Admin', 'Moderator', 'Customer'])
+def get_one_organization(organization_id):
+    if request.method == 'GET':
+        query = sql.text('SELECT Import.one_organization_json(:id)')
+        return simple_get_values(db, query, id=organization_id)
+
+
+@app.route('/station', methods=['POST'])
+@auth.login_required
+@role_required(['Admin', 'Moderator'])
 def stations():
     if request.method == 'POST':
         struct = request.json
         query = sql.text('EXEC Import.insert_station_json :json')
         if simple_import_values(db, query, json=json.dumps(struct)):
             return {}, 201
+
+
+@app.route('/station', methods=['GET'])
+@auth.login_required
+@role_required(['Admin', 'Moderator', 'Customer'])
+def get_all_stations():
     if request.method == 'GET':
         query = sql.text('SELECT Import.station_json()')
         return simple_get_values(db, query)
 
 
-@app.route('/station/<int:station_id>', methods=['GET', 'PATCH', 'DELETE'])
+@app.route('/station/<int:station_id>', methods=['PATCH', 'DELETE'])
+@auth.login_required
+@role_required(['Admin', 'Moderator'])
 def one_station(station_id):
-    if request.method == 'GET':
-        query = sql.text('SELECT Import.one_station_json(:id)')
-        result = db.execute(query, id=station_id).fetchone()[0]
-        if result is None:
-            return jsonify(message='Регион с указанным идентификатором не существует!'), 400
-        return jsonify(*json.loads(result)), 200
-    elif request.method == 'DELETE':
+    if request.method == 'DELETE':
         del_query = sql.text('EXEC Import.delete_station :id')
         try:
             simple_change(db, del_query, id=station_id)
@@ -230,14 +346,34 @@ def one_station(station_id):
             return {}, 400
 
 
+@app.route('/station/<int:station_id>', methods=['GET'])
+@auth.login_required
+@role_required(['Admin', 'Moderator', 'Customer'])
+def get_one_station(station_id):
+    if request.method == 'GET':
+        query = sql.text('SELECT Import.one_station_json(:id)')
+        result = db.execute(query, id=station_id).fetchone()[0]
+        if result is None:
+            return jsonify(message='Регион с указанным идентификатором не существует!'), 400
+        return jsonify(*json.loads(result)), 200
+
+
 # Регистрация поступающих с метеостанции данных
-@app.route('/station/<int:station_id>/registration', methods=['POST', 'GET'])
+@app.route('/station/<int:station_id>/registration', methods=['POST'])
+@auth.login_required
+@role_required(['Admin', 'Moderator', 'Station'])
 def registration(station_id):
     if request.method == 'POST':
         struct = request.get_json()
         query = sql.text('EXEC Import.insert_registration_json :json, :id')
         if simple_import_values(db, query, json=json.dumps(struct), id=station_id):
             return {}, 201
+
+
+@app.route('/station/<int:station_id>/registration', methods=['GET'])
+@auth.login_required
+@role_required(['Admin', 'Moderator', 'Customer'])
+def get_registration(station_id):
     if request.method == 'GET':
         d_begin = request.args.get('begin')
         d_end = request.args.get('end')
@@ -271,6 +407,8 @@ def registration(station_id):
 
 
 @app.route('/station/<int:station_id>/agg', methods=['GET'])
+@auth.login_required
+@role_required(['Admin', 'Moderator', 'Customer'])
 def agg_months(station_id):
     diapason = request.args.get('diapason')
     if diapason is None or diapason not in ['months', 'weeks', 'days', 'hours12', 'hours6']:

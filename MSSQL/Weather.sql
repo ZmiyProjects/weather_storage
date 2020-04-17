@@ -258,9 +258,9 @@ CREATE TABLE Agg.Months(
 IF EXISTS (SELECT * FROM sys.server_principals WHERE name = 'weather_user_login')
     DROP LOGIN weather_user_login;
 IF EXISTS (SELECT * FROM sys.server_principals WHERE name = 'weather_moderator')
-    DROP LOGIN weather_user_login;
+    DROP LOGIN weather_moderator;
 IF EXISTS (SELECT * FROM sys.server_principals WHERE name = 'weather_customer')
-    DROP LOGIN weather_user_login;
+    DROP LOGIN weather_customer;
 
 -- Создание пользователей и ролей уровля базы данных
 CREATE ROLE WeatherModerator;
@@ -270,9 +270,9 @@ CREATE ROLE WeatherCustomer;
 CREATE ROLE WebUser;
 
 -- Создание пользователей и ограничение доступа
-CREATE LOGIN weather_user_login WITH PASSWORD = 'weatheruser', DEFAULT_DATABASE = Weather;
-CREATE LOGIN weather_moderator WITH PASSWORD = 'weatheruser', DEFAULT_DATABASE = Weather;
-CREATE LOGIN weather_customer WITH PASSWORD = 'weatheruser', DEFAULT_DATABASE = Weather;
+CREATE LOGIN weather_user_login WITH PASSWORD = 'WeatherUser1', DEFAULT_DATABASE = Weather;
+CREATE LOGIN weather_moderator WITH PASSWORD = 'WeatherUser1', DEFAULT_DATABASE = Weather;
+CREATE LOGIN weather_customer WITH PASSWORD = 'WeatherUser1', DEFAULT_DATABASE = Weather;
 
 CREATE USER weather_user FOR LOGIN weather_user_login;
 CREATE USER weather_moderator FOR LOGIN weather_moderator;
@@ -819,7 +819,7 @@ END
 GO
 
 -- Триггер для автомитического вычисления суммарной площади страны
-CREATE TRIGGER Web.calculate_total ON Import.Country AFTER UPDATE, INSERT AS
+CREATE TRIGGER Import.calculate_total ON Import.Country AFTER UPDATE, INSERT AS
     BEGIN
 	    SET NOCOUNT ON;
         UPDATE Import.Country SET
@@ -1196,4 +1196,4 @@ INSERT INTO auth.RoleData(RoleName) VALUES ('Moderator');
 INSERT INTO auth.RoleData(RoleName) VALUES ('Customer');
 INSERT INTO auth.RoleData(RoleName) VALUES ('Station');
 
-EXEC auth.insert_user 'Administrator', 'password', 1;
+EXEC web.insert_user 'Administrator', 'password', 1;

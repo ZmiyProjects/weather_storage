@@ -20,6 +20,10 @@ GO
 CREATE SCHEMA Auth
 GO
 
+-- схема Web предназначена в качестве пространства имен для функций/процедур вызываемых со стороны веб-сервиса
+CREATE SCHEMA Web;
+GO
+
 CREATE TABLE Auth.RoleData(
     RoleId INT PRIMARY KEY IDENTITY,
     RoleName VARCHAR(50) NOT NULL UNIQUE
@@ -253,53 +257,93 @@ CREATE TABLE Agg.Months(
 -- Проверка существования логина
 IF EXISTS (SELECT * FROM sys.server_principals WHERE name = 'weather_user_login')
     DROP LOGIN weather_user_login;
+IF EXISTS (SELECT * FROM sys.server_principals WHERE name = 'weather_moderator')
+    DROP LOGIN weather_user_login;
+IF EXISTS (SELECT * FROM sys.server_principals WHERE name = 'weather_customer')
+    DROP LOGIN weather_user_login;
 
--- Проверка существования пользователя
-IF DATABASE_PRINCIPAL_ID('weather_user') IS NOT NULL
-    DROP USER weather_user;
+-- Создание пользователей и ролей уровля базы данных
+CREATE ROLE WeatherModerator;
+CREATE ROLE WeatherCustomer;
+
+-- Роль для работы от имени веб-сервиса
+CREATE ROLE WebUser;
+
+-- Создание пользователей и ограничение доступа
+CREATE LOGIN weather_user_login WITH PASSWORD = 'weatheruser', DEFAULT_DATABASE = Weather;
+CREATE LOGIN weather_moderator WITH PASSWORD = 'weatheruser', DEFAULT_DATABASE = Weather;
+CREATE LOGIN weather_customer WITH PASSWORD = 'weatheruser', DEFAULT_DATABASE = Weather;
+
+CREATE USER weather_user FOR LOGIN weather_user_login;
+CREATE USER weather_moderator FOR LOGIN weather_moderator;
+CREATE USER weather_customer FOR LOGIN weather_customer;
+
+ALTER ROLE WebUser ADD MEMBER weather_user;
+ALTER ROLE WeatherModerator ADD MEMBER weather_moderator;
+ALTER ROLE WeatherCustomer ADD MEMBER weather_customer;
+
+GRANT EXECUTE ON SCHEMA::Web TO WebUser;
+
+-- Разрешиле weather_user только чтение в рамках схемы Static, прочие операции недоступны
+GRANT SELECT ON SCHEMA::Static TO WeatherModerator;
+
+-- Разрешает WeatherModerator чтение, обновление, удаление записей а также вызов функций/процедув в рамках схемы Import
+GRANT SELECT, UPDATE, DELETE, EXECUTE ON SCHEMA::Import TO WeatherModerator;
+-- Работает
+DENY UPDATE, DELETE ON OBJECT::Import.Registration TO WeatherModerator;
+
+-- Разрешает weather_user запись, чтение и запуск хранимых процедур в схеме Agg
+GRANT INSERT, SELECT, EXECUTE ON SCHEMA::Agg TO WeatherModerator;
+
+GRANT SELECT ON SCHEMA::Static TO WeatherCustomer;
+GRANT SELECT ON SCHEMA::Import TO WeatherCustomer;
+GRANT SELECT ON SCHEMA::Agg TO WeatherCustomer;
+
+-- Хранимые процедуры
+
 GO
-CREATE OR ALTER FUNCTION Auth.users_json() RETURNS NVARCHAR(MAX) AS
+CREATE OR ALTER FUNCTION Web.users_json() RETURNS NVARCHAR(MAX) AS
 BEGIN
     RETURN (
-        SELECT U.UserId, U.UserLogin, U.RegistrationDate, R.RoleId, R.RoleName FROM UserData AS U
-            JOIN RoleData R on U.RoleId = R.RoleId
+        SELECT U.UserId, U.UserLogin, U.RegistrationDate, R.RoleId, R.RoleName FROM Auth.UserData AS U
+            JOIN Auth.RoleData R on U.RoleId = R.RoleId
         FOR JSON PATH
         );
 END
 GO
-CREATE OR ALTER FUNCTION Auth.one_user_json(@UserId INT) RETURNS NVARCHAR(MAX) AS
+CREATE OR ALTER FUNCTION Web.one_user_json(@UserId INT) RETURNS NVARCHAR(MAX) AS
 BEGIN
     RETURN (
-        SELECT U.UserId, U.UserLogin, U.RegistrationDate, R.RoleId, R.RoleName FROM UserData AS U
-            JOIN RoleData AS R on U.UserId = @UserId AND U.RoleId = R.RoleId
+        SELECT U.UserId, U.UserLogin, U.RegistrationDate, R.RoleId, R.RoleName FROM Auth.UserData AS U
+            JOIN Auth.RoleData AS R on U.UserId = @UserId AND U.RoleId = R.RoleId
         FOR JSON PATH
         );
 END
 GO
-CREATE OR ALTER PROCEDURE Auth.insert_user(@UserLogin VARCHAR(30), @Password VARCHAR(50), @RoleId INT) AS
+CREATE OR ALTER PROCEDURE Web.insert_user(@UserLogin VARCHAR(30), @Password VARCHAR(50), @RoleId INT) AS
     BEGIN
         INSERT INTO Auth.UserData(UserLogin, PasswordHash, RoleId) VALUES (@UserLogin, HASHBYTES('SHA2_256', @Password), @RoleId);
     END
 GO
-CREATE OR ALTER FUNCTION Auth.roles_json() RETURNS NVARCHAR(MAX) AS
+CREATE OR ALTER FUNCTION Web.roles_json() RETURNS NVARCHAR(MAX) AS
 BEGIN
     RETURN (
-        SELECT R.RoleId, R.RoleName, COUNT(U.UserId) AS RoleCount FROM RoleData AS R
-            LEFT JOIN UserData AS U on R.RoleId = U.RoleId
+        SELECT R.RoleId, R.RoleName, COUNT(U.UserId) AS RoleCount FROM Auth.RoleData AS R
+            LEFT JOIN Auth.UserData AS U on R.RoleId = U.RoleId
         GROUP BY R.RoleId, R.RoleName
         FOR JSON PATH
         );
 END
 GO
 
-CREATE OR ALTER PROCEDURE Auth.delete_user(@UserId INT) AS
+CREATE OR ALTER PROCEDURE Web.delete_user(@UserId INT) AS
     BEGIN
         IF NOT EXISTS(SELECT * FROM Auth.UserData WHERE UserId = @UserId)
             THROW 51009, N'Пользователь не существует!', 11;
         DELETE FROM Auth.UserData WHERE UserId = @UserId;
     END
 GO
-CREATE OR ALTER FUNCTION Auth.init_user(@UserName VARCHAR(50)) RETURNS VARCHAR(50) AS
+CREATE OR ALTER FUNCTION Web.init_user(@UserName VARCHAR(50)) RETURNS VARCHAR(50) AS
     BEGIN
         RETURN (
             SELECT R.RoleName FROM Auth.UserData AS U
@@ -307,7 +351,7 @@ CREATE OR ALTER FUNCTION Auth.init_user(@UserName VARCHAR(50)) RETURNS VARCHAR(5
             );
     END
 GO
-CREATE OR ALTER PROCEDURE auth.update_user_json(@json NVARCHAR(MAX), @UserId INT) AS
+CREATE OR ALTER PROCEDURE Web.update_user_json(@json NVARCHAR(MAX), @UserId INT) AS
 BEGIN
     IF NOT EXISTS(SELECT * FROM Auth.UserData WHERE UserId = @UserId)
         THROW 51002, N'Пользователь с заданным идентификатором отсутствует!', 11;
@@ -327,7 +371,7 @@ BEGIN
 END
 GO
 
-CREATE OR ALTER PROCEDURE Auth.update_user
+CREATE OR ALTER PROCEDURE Web.update_user
     @UserId INT = NULL,
     @NewLogin VARCHAR(30) = NULL,
     @NewPassword VARCHAR(50) = NULL,
@@ -345,7 +389,7 @@ AS
     END
 GO
 
-CREATE OR ALTER FUNCTION auth.select_user(@UserId INT) RETURNS NVARCHAR(MAX) AS
+CREATE OR ALTER FUNCTION Web.select_user(@UserId INT) RETURNS NVARCHAR(MAX) AS
     BEGIN
         RETURN (
             SELECT U.UserLogin, R.RoleName FROM Auth.UserData AS U
@@ -355,43 +399,20 @@ CREATE OR ALTER FUNCTION auth.select_user(@UserId INT) RETURNS NVARCHAR(MAX) AS
     END
 GO
 
-CREATE OR ALTER FUNCTION auth.check_password(@UserName VARCHAR(30), @Password VARCHAR(50)) RETURNS BIT AS
+CREATE OR ALTER FUNCTION Web.check_password(@UserName VARCHAR(30), @Password VARCHAR(50)) RETURNS BIT AS
 BEGIN
     IF EXISTS(SELECT * FROM Auth.UserData WHERE UserLogin = @UserName)
-        IF HASHBYTES('SHA2_256', @Password) = (SELECT PasswordHash FROM UserData WHERE UserLogin = @UserName)
+        IF HASHBYTES('SHA2_256', @Password) = (SELECT PasswordHash FROM Auth.UserData WHERE UserLogin = @UserName)
 		    RETURN 1;
 		ELSE
 		  RETURN 0;
     RETURN 0;
 END
 GO
--- Создание пользователей и ролей уровля базы данных
-CREATE ROLE WeatherModerator;
-CREATE ROLE Customer;
 
--- Создание пользователей и ограничение доступа
-CREATE LOGIN weather_user_login WITH PASSWORD = 'weatheruser';
-CREATE USER weather_user FOR LOGIN weather_user_login;
-
---
-GRANT SELECT, EXECUTE ON SCHEMA::Auth TO weather_user;
-GRANT INSERT, UPDATE, DELETE ON Auth.UserData TO weather_user;
-
--- Разрешиле weather_user только чтение в рамках схемы Static, прочие операции недоступны (проверено)
-GRANT SELECT, EXECUTE ON SCHEMA::Static TO weather_user;
-
--- Разрешает weather_user чтение, обновление, удаление записей а также вызов функций/процедув в рамках схемы Import
-GRANT SELECT, UPDATE, DELETE, EXECUTE ON SCHEMA::Import TO weather_user;
--- Работает
-DENY UPDATE, DELETE ON OBJECT::Import.Registration TO weather_user;
-
--- Разрешает weather_user запись, чтение и запуск хранимых процедур в схеме Agg
-GRANT INSERT, SELECT, EXECUTE ON SCHEMA::Agg TO weather_user;
-
--- Хранимые процедуры
 -- Вставка в БД сведений о одной стране из JSON (TotalArea вычисляется во время вставки)
 GO
-CREATE OR ALTER PROCEDURE Import.insert_country_json(@json NVARCHAR(MAX)) AS
+CREATE OR ALTER PROCEDURE Web.insert_country_json(@json NVARCHAR(MAX)) AS
     BEGIN
         INSERT INTO Import.Country(CountryName, LandArea, WaterArea, TotalArea)
         SELECT
@@ -408,7 +429,7 @@ CREATE OR ALTER PROCEDURE Import.insert_country_json(@json NVARCHAR(MAX)) AS
 GO
 
 -- Вставка в БД сведений об одном регионе из JSON
-CREATE OR ALTER PROCEDURE Import.insert_region_json(@json NVARCHAR(MAX), @CountryId INT) AS
+CREATE OR ALTER PROCEDURE Web.insert_region_json(@json NVARCHAR(MAX), @CountryId INT) AS
     BEGIN
        INSERT INTO Import.Region(RegionName, CountryId)
        SELECT
@@ -421,7 +442,7 @@ CREATE OR ALTER PROCEDURE Import.insert_region_json(@json NVARCHAR(MAX), @Countr
 GO
 
 -- Вставка в БД сведений об одном населённом пункте из JSON
-CREATE OR ALTER PROCEDURE Import.insert_locality_json(@json NVARCHAR(MAX), @RegionId INT) AS
+CREATE OR ALTER PROCEDURE Web.insert_locality_json(@json NVARCHAR(MAX), @RegionId INT) AS
     BEGIN
         INSERT INTO Import.Locality(LocalityName, RegionId)
         SELECT
@@ -435,7 +456,7 @@ GO
 
 -- Вставить сведения о одной организации
 -- Добавить проверку наличия родительской организации и бросить исключение приее отсутствии!
-CREATE OR ALTER PROCEDURE Import.insert_organization_json(@json NVARCHAR(MAX)) AS
+CREATE OR ALTER PROCEDURE Web.insert_organization_json(@json NVARCHAR(MAX)) AS
     BEGIN
         INSERT INTO Import.Organization(OrganizationName, Address, WebSite, LocalityId, ParentOrganizationId)
         SELECT
@@ -451,7 +472,7 @@ CREATE OR ALTER PROCEDURE Import.insert_organization_json(@json NVARCHAR(MAX)) A
 GO
 
 -- Вставить сведения об одной станциии
-CREATE OR ALTER PROCEDURE Import.insert_station_json(@json NVARCHAR(MAX)) AS
+CREATE OR ALTER PROCEDURE Web.insert_station_json(@json NVARCHAR(MAX)) AS
     BEGIN
         INSERT INTO Import.Station(StationName, Latitude, Longitude, Height, RegionId, OrganizationId)
         SELECT
@@ -468,7 +489,7 @@ CREATE OR ALTER PROCEDURE Import.insert_station_json(@json NVARCHAR(MAX)) AS
 GO
 
 -- агрегация зарегистрированных данных
-CREATE PROCEDURE Import.agg_values_json(@json NVARCHAR(MAX), @StationId INT) AS
+CREATE PROCEDURE Web.agg_values_json(@json NVARCHAR(MAX), @StationId INT) AS
     BEGIN
         -- Месяцы
         INSERT INTO Agg.Months(
@@ -608,7 +629,7 @@ CREATE PROCEDURE Import.agg_values_json(@json NVARCHAR(MAX), @StationId INT) AS
 GO
 
 -- Регистрация набора метеорологических показателей
-CREATE OR ALTER PROCEDURE Import.insert_registration_json(@json NVARCHAR(MAX), @StationId INT) AS
+CREATE OR ALTER PROCEDURE Web.insert_registration_json(@json NVARCHAR(MAX), @StationId INT) AS
     BEGIN
         INSERT INTO Import.Registration(StationId, RegistrationDate, Temperature, DewPoint, Pressure, PressureStationLevel,
                                         Humidity, VisibleRange, WindSpeed, Weather, WindDirectionId, CloudinessId)
@@ -630,12 +651,12 @@ CREATE OR ALTER PROCEDURE Import.insert_registration_json(@json NVARCHAR(MAX), @
             CloudinessId INT  '$.CloudinessId'
         ) AS J;
 
-        EXEC Import.agg_values_json @json = @json, @StationId = @StationId;
+        EXEC Web.agg_values_json @json = @json, @StationId = @StationId;
     END;
 GO
 
 -- Удаление страны с проверкой наличия в БД, если страна отсутствует будет вызвано исключение
-CREATE PROCEDURE Import.delete_country(@CountryId INT) AS
+CREATE PROCEDURE Web.delete_country(@CountryId INT) AS
     BEGIN
         IF NOT EXISTS(SELECT * FROM Import.Country WHERE CountryId = @CountryId)
             THROW 51002, N'Страна с заданным идентификатором отсутствует!', 11;
@@ -645,7 +666,7 @@ CREATE PROCEDURE Import.delete_country(@CountryId INT) AS
 
 	GO
 -- Удаление региона с проверкой наличия в БД, если страна отсутствует будет вызвано исключение
-CREATE PROCEDURE Import.delete_region(@RegionId INT) AS
+CREATE PROCEDURE Web.delete_region(@RegionId INT) AS
     BEGIN
         IF NOT EXISTS(SELECT * FROM Import.Region WHERE RegionId = @RegionId)
             THROW 51003, N'Регион с заданным идентификатором отсутствует!', 11;
@@ -655,7 +676,7 @@ CREATE PROCEDURE Import.delete_region(@RegionId INT) AS
 
 GO
 -- Удаление населённого пункта с проверкой наличия в БД, если страна отсутствует будет вызвано исключение
-CREATE PROCEDURE Import.delete_locality(@LocalityId INT) AS
+CREATE PROCEDURE Web.delete_locality(@LocalityId INT) AS
     BEGIN
         IF NOT EXISTS(SELECT * FROM Import.Locality WHERE LocalityId = @LocalityId)
             THROW 51004, N'Населённый пункт с заданным идентификатором отсутствует!', 11;
@@ -665,7 +686,7 @@ CREATE PROCEDURE Import.delete_locality(@LocalityId INT) AS
 
 GO
 -- Удаление организации с проверкой наличия в БД, если страна отсутствует будет вызвано исключение
-CREATE PROCEDURE Import.delete_organization(@OrganizationId INT) AS
+CREATE PROCEDURE Web.delete_organization(@OrganizationId INT) AS
     BEGIN
         IF NOT EXISTS(SELECT * FROM Import.Organization WHERE OrganizationId = @OrganizationId)
             THROW 51005, N'Организация с заданным идентификатором отсутствует!', 12;
@@ -675,7 +696,7 @@ CREATE PROCEDURE Import.delete_organization(@OrganizationId INT) AS
 GO
 
 -- Удаление метеостанции с проверкой наличия в БД, если страна отсутствует будет вызвано исключение
-CREATE PROCEDURE Import.delete_station(@StationId INT) AS
+CREATE PROCEDURE Web.delete_station(@StationId INT) AS
     BEGIN
         IF NOT EXISTS(SELECT * FROM Import.Station WHERE StationId = @StationId)
             THROW 51006, N'Организация с заданным идентификатором отсутствует!', 12;
@@ -685,7 +706,7 @@ CREATE PROCEDURE Import.delete_station(@StationId INT) AS
 
 --Обновляет сведения о стране
 GO
-CREATE OR ALTER PROCEDURE Import.update_country(@json NVARCHAR(MAX), @CountryId INT) AS
+CREATE OR ALTER PROCEDURE Web.update_country(@json NVARCHAR(MAX), @CountryId INT) AS
 BEGIN
     IF NOT EXISTS(SELECT * FROM Import.Country WHERE CountryId = @CountryId)
         THROW 51002, N'Страна с заданным идентификатором отсутствует!', 11;
@@ -706,7 +727,7 @@ END
 
 GO
 -- Обновляет сведения о регионе
-CREATE OR ALTER PROCEDURE Import.update_region(@json NVARCHAR(MAX), @RegionId INT) AS
+CREATE OR ALTER PROCEDURE Web.update_region(@json NVARCHAR(MAX), @RegionId INT) AS
 BEGIN
     IF NOT EXISTS(SELECT * FROM Import.Region WHERE RegionId = @RegionId)
         THROW 51003, N'Регион с заданным идентификатором отсутствует!', 11;
@@ -725,7 +746,7 @@ END
 
 GO
 -- Обновляет сведения о населенном пункте
-CREATE OR ALTER PROCEDURE Import.update_locality(@json NVARCHAR(MAX), @LocalityId INT) AS
+CREATE OR ALTER PROCEDURE Web.update_locality(@json NVARCHAR(MAX), @LocalityId INT) AS
 BEGIN
     IF NOT EXISTS(SELECT * FROM Import.Locality WHERE LocalityId = @LocalityId)
         THROW 51004, N'Населённый пункт с заданным идентификатором отсутствует!', 11;
@@ -744,7 +765,7 @@ END
 
 GO
 -- Обновление сведений о организации
-CREATE OR ALTER PROCEDURE Import.update_organization(@json NVARCHAR(MAX), @OrganizationId INT) AS
+CREATE OR ALTER PROCEDURE Web.update_organization(@json NVARCHAR(MAX), @OrganizationId INT) AS
 BEGIN
     IF NOT EXISTS(SELECT * FROM Import.Organization WHERE OrganizationId = @OrganizationId)
         THROW 51005, N'Организация с заданным идентификатором отсутствует!', 12;
@@ -770,7 +791,7 @@ END
 
 GO
 -- Обновление сведений о станции
-CREATE OR ALTER PROCEDURE Import.update_station(@json NVARCHAR(MAX), @StationId INT) AS
+CREATE OR ALTER PROCEDURE Web.update_station(@json NVARCHAR(MAX), @StationId INT) AS
 BEGIN
     IF NOT EXISTS(SELECT * FROM Import.Station WHERE StationId = @StationId)
         THROW 51006, N'Организация с заданным идентификатором отсутствует!', 12;
@@ -798,7 +819,7 @@ END
 GO
 
 -- Триггер для автомитического вычисления суммарной площади страны
-CREATE TRIGGER Import.calculate_total ON Import.Country AFTER UPDATE, INSERT AS
+CREATE TRIGGER Web.calculate_total ON Import.Country AFTER UPDATE, INSERT AS
     BEGIN
 	    SET NOCOUNT ON;
         UPDATE Import.Country SET
@@ -810,7 +831,7 @@ GO
 -- Функции возвращающие содержимое таблиц в формаье JSON
 
 -- Получить все страны
-CREATE FUNCTION Import.country_json() RETURNS NVARCHAR(MAX) AS
+CREATE FUNCTION Web.country_json() RETURNS NVARCHAR(MAX) AS
     BEGIN
         RETURN (
             SELECT C.CountryId, C.CountryName, C.LandArea, C.WaterArea, C.TotalArea FROM Import.Country AS C
@@ -820,7 +841,7 @@ CREATE FUNCTION Import.country_json() RETURNS NVARCHAR(MAX) AS
 GO
 
 -- Вернуть сведение о стране по идентификатору
-CREATE FUNCTION Import.one_country_json(@CountryId INT) RETURNS NVARCHAR(MAX) AS
+CREATE FUNCTION Web.one_country_json(@CountryId INT) RETURNS NVARCHAR(MAX) AS
 BEGIN
     IF NOT EXISTS(SELECT * FROM Import.Country WHERE CountryId = @CountryId)
         RETURN NULL;
@@ -833,7 +854,7 @@ END
 
 GO
 -- получить все регионы
-CREATE FUNCTION Import.region_json() RETURNS NVARCHAR(MAX) AS
+CREATE FUNCTION Web.region_json() RETURNS NVARCHAR(MAX) AS
     BEGIN
         RETURN (
         SELECT RegionId, RegionName, CountryId FROM Import.Region
@@ -843,7 +864,7 @@ CREATE FUNCTION Import.region_json() RETURNS NVARCHAR(MAX) AS
 
 GO
 -- Получить сведения о регионе по идентификатору
-CREATE FUNCTION Import.one_region_json(@RegionId INT) RETURNS NVARCHAR(MAX) AS
+CREATE FUNCTION Web.one_region_json(@RegionId INT) RETURNS NVARCHAR(MAX) AS
 BEGIN
     IF NOT EXISTS(SELECT * FROM Import.Region WHERE RegionId = @RegionId)
         RETURN NULL;
@@ -856,7 +877,7 @@ END
 
 GO
 -- получить все населенные пункты
-CREATE FUNCTION Import.locality_json() RETURNS NVARCHAR(MAX) AS
+CREATE FUNCTION Web.locality_json() RETURNS NVARCHAR(MAX) AS
 BEGIN
     RETURN (
         SELECT LocalityId, LocalityName, RegionId FROM Import.Locality
@@ -866,7 +887,7 @@ END
 GO
 
 -- Получить сведения о регионе по идентификатору
-CREATE FUNCTION Import.one_locality_json(@LocalityId INT) RETURNS NVARCHAR(MAX) AS
+CREATE FUNCTION Web.one_locality_json(@LocalityId INT) RETURNS NVARCHAR(MAX) AS
 BEGIN
     IF NOT EXISTS(SELECT * FROM Import.Locality WHERE LocalityId = @LocalityId)
         RETURN NULL;
@@ -879,7 +900,7 @@ END
 GO
 
 -- получить все станции
-CREATE FUNCTION Import.station_json() RETURNS NVARCHAR(MAX) AS
+CREATE FUNCTION Web.station_json() RETURNS NVARCHAR(MAX) AS
 BEGIN
     RETURN (
         SELECT StationId, StationName, Latitude, Longitude, Height, RegionId, OrganizationId FROM Import.Station
@@ -889,7 +910,7 @@ END
 GO
 
 -- Получить сведения о станции по идентификатору
-CREATE FUNCTION Import.one_station_json(@StationId INT) RETURNS NVARCHAR(MAX) AS
+CREATE FUNCTION Web.one_station_json(@StationId INT) RETURNS NVARCHAR(MAX) AS
 BEGIN
     IF NOT EXISTS(SELECT * FROM Import.Station WHERE StationId = @StationId)
         RETURN NULL;
@@ -902,7 +923,7 @@ END
 GO
 
 -- Получить все организации
-CREATE FUNCTION Import.organization_json() RETURNS NVARCHAR(MAX) AS
+CREATE FUNCTION Web.organization_json() RETURNS NVARCHAR(MAX) AS
 BEGIN
     RETURN (
         SELECT OrganizationId, OrganizationName, Address, WebSite, LocalityId, ParentOrganizationId FROM Import.Organization
@@ -912,7 +933,7 @@ END
 GO
 
 -- Получить сведения о организации по идентификатору
-CREATE FUNCTION Import.one_organization_json(@OrganizationId INT) RETURNS NVARCHAR(MAX) AS
+CREATE FUNCTION Web.one_organization_json(@OrganizationId INT) RETURNS NVARCHAR(MAX) AS
 BEGIN
     RETURN (
         SELECT OrganizationId, OrganizationName, Address, WebSite, LocalityId, ParentOrganizationId FROM Import.Organization
@@ -923,7 +944,7 @@ END
 GO
 
 -- Получить зарегистрированные на метеостанции данные в формате JSON
-CREATE FUNCTION Import.registration_json(@StationId INT) RETURNS NVARCHAR(MAX) AS
+CREATE FUNCTION Web.registration_json(@StationId INT) RETURNS NVARCHAR(MAX) AS
 BEGIN
     RETURN (
         SELECT
@@ -937,7 +958,7 @@ END
 GO
 
 -- Получить зарегистрированные на метеостанции данные в заданном диапозоне в формате JSON
-CREATE FUNCTION Import.registration_diapason_json(@StationId INT, @d_begin DATETIME, @d_end DATETIME) RETURNS NVARCHAR(MAX) AS
+CREATE FUNCTION Web.registration_diapason_json(@StationId INT, @d_begin DATETIME, @d_end DATETIME) RETURNS NVARCHAR(MAX) AS
 BEGIN
      RETURN (
         SELECT
@@ -951,7 +972,7 @@ END
 GO
 
 -- Получить метеоданные, агрегированные за месяц
-CREATE FUNCTION Agg.months_json(@StationId INT) RETURNS NVARCHAR(MAX) AS
+CREATE FUNCTION Web.months_json(@StationId INT) RETURNS NVARCHAR(MAX) AS
     BEGIN
         RETURN (
         SELECT
@@ -963,7 +984,7 @@ CREATE FUNCTION Agg.months_json(@StationId INT) RETURNS NVARCHAR(MAX) AS
     END
 GO
 -- Получить метеоданные, агрегированные за месяц в заданном диапозоне
-CREATE FUNCTION Agg.months_json_diapason(@StationId INT, @d_begin DATETIME, @d_end DATETIME) RETURNS NVARCHAR(MAX) AS
+CREATE FUNCTION Web.months_json_diapason(@StationId INT, @d_begin DATETIME, @d_end DATETIME) RETURNS NVARCHAR(MAX) AS
     BEGIN
         RETURN (
         SELECT
@@ -975,7 +996,7 @@ CREATE FUNCTION Agg.months_json_diapason(@StationId INT, @d_begin DATETIME, @d_e
     END
 GO
 -- Получить метеоданные, агрегированные за неделю
-CREATE FUNCTION Agg.weeks_json(@StationId INT) RETURNS NVARCHAR(MAX) AS
+CREATE FUNCTION Web.weeks_json(@StationId INT) RETURNS NVARCHAR(MAX) AS
     BEGIN
         RETURN (
         SELECT
@@ -987,7 +1008,7 @@ CREATE FUNCTION Agg.weeks_json(@StationId INT) RETURNS NVARCHAR(MAX) AS
     END
 GO
 -- Получить метеоданные, агрегированные за неделю в заданном диапозоне
-CREATE FUNCTION Agg.weeks_json_diapason(@StationId INT, @d_begin DATETIME, @d_end DATETIME) RETURNS NVARCHAR(MAX) AS
+CREATE FUNCTION Web.weeks_json_diapason(@StationId INT, @d_begin DATETIME, @d_end DATETIME) RETURNS NVARCHAR(MAX) AS
     BEGIN
         RETURN (
         SELECT
@@ -999,7 +1020,7 @@ CREATE FUNCTION Agg.weeks_json_diapason(@StationId INT, @d_begin DATETIME, @d_en
     END
 GO
 -- Получить метеоданные, агрегированные за день
-CREATE FUNCTION Agg.days_json(@StationId INT) RETURNS NVARCHAR(MAX) AS
+CREATE FUNCTION Web.days_json(@StationId INT) RETURNS NVARCHAR(MAX) AS
     BEGIN
         RETURN (
         SELECT
@@ -1023,7 +1044,7 @@ CREATE FUNCTION Agg.days_json_diapason(@StationId INT, @d_begin DATETIME, @d_end
     END
 GO
 -- Получить метеоданные, агрегированные за 12 часов
-CREATE FUNCTION Agg.hours12_json(@StationId INT) RETURNS NVARCHAR(MAX) AS
+CREATE FUNCTION Web.hours12_json(@StationId INT) RETURNS NVARCHAR(MAX) AS
     BEGIN
         RETURN (
         SELECT
@@ -1035,7 +1056,7 @@ CREATE FUNCTION Agg.hours12_json(@StationId INT) RETURNS NVARCHAR(MAX) AS
     END
 GO
 -- Получить метеооданные, агрегированные за 12 часов в заданном диапозоне
-CREATE FUNCTION Agg.hours12_json_diapason(@StationId INT, @d_begin DATETIME, @d_end DATETIME) RETURNS NVARCHAR(MAX) AS
+CREATE FUNCTION Web.hours12_json_diapason(@StationId INT, @d_begin DATETIME, @d_end DATETIME) RETURNS NVARCHAR(MAX) AS
     BEGIN
         RETURN (
         SELECT
@@ -1047,7 +1068,7 @@ CREATE FUNCTION Agg.hours12_json_diapason(@StationId INT, @d_begin DATETIME, @d_
     END
 GO
 -- Получить метеоданные, агрегированные за 6 часов
-CREATE FUNCTION Agg.hours6_json(@StationId INT) RETURNS NVARCHAR(MAX) AS
+CREATE FUNCTION Web.hours6_json(@StationId INT) RETURNS NVARCHAR(MAX) AS
     BEGIN
         RETURN (
         SELECT
@@ -1059,7 +1080,7 @@ CREATE FUNCTION Agg.hours6_json(@StationId INT) RETURNS NVARCHAR(MAX) AS
     END
 GO
 -- Получить метеооданные, агрегированные за 6 часов в заданном диапозоне
-CREATE FUNCTION Agg.hours6_json_diapason(@StationId INT, @d_begin DATETIME, @d_end DATETIME) RETURNS NVARCHAR(MAX) AS
+CREATE FUNCTION Web.hours6_json_diapason(@StationId INT, @d_begin DATETIME, @d_end DATETIME) RETURNS NVARCHAR(MAX) AS
     BEGIN
         RETURN (
         SELECT
@@ -1072,7 +1093,7 @@ CREATE FUNCTION Agg.hours6_json_diapason(@StationId INT, @d_begin DATETIME, @d_e
 GO
 
 -- Получить зарегистрированные на метеостанции данные в формате XML
-CREATE OR ALTER FUNCTION Import.registration_xml(@StationId INT) RETURNS NVARCHAR(MAX) AS
+CREATE OR ALTER FUNCTION Web.registration_xml(@StationId INT) RETURNS NVARCHAR(MAX) AS
 BEGIN
     RETURN (
         SELECT
@@ -1086,7 +1107,7 @@ END
 
 GO
 -- Получить зарегистрированные на метеостанции данные в заданном диапозоне в формате XML
-CREATE OR ALTER FUNCTION Import.registration_diapason_xml(@StationId INT, @d_begin DATETIME, @d_end DATETIME) RETURNS NVARCHAR(MAX) AS
+CREATE OR ALTER FUNCTION Web.registration_diapason_xml(@StationId INT, @d_begin DATETIME, @d_end DATETIME) RETURNS NVARCHAR(MAX) AS
 BEGIN
     RETURN (
         SELECT
@@ -1100,7 +1121,7 @@ END
 GO
 
 -- Получить содержание справочника облачности
-CREATE FUNCTION Static.get_cloudiness_json() RETURNS NVARCHAR(MAX) AS
+CREATE FUNCTION Web.get_cloudiness_json() RETURNS NVARCHAR(MAX) AS
 BEGIN
     RETURN (
         SELECT CloudinessId, CloudinessLevel, Octane FROM Static.Cloudiness
@@ -1111,7 +1132,7 @@ END
 GO
 
 -- Получить содержание справочника направлений ветра
-CREATE FUNCTION Static.get_wind_direction_json() RETURNS NVARCHAR(MAX) AS
+CREATE FUNCTION Web.get_wind_direction_json() RETURNS NVARCHAR(MAX) AS
 BEGIN
     RETURN (
         SELECT WindDirectionId, Direction, Mark FROM Static.WindDirection
@@ -1121,12 +1142,12 @@ END
 GO
 
 GO
-CREATE FUNCTION Import.hours_12(@RegDate DATETIME) RETURNS INT AS
+CREATE FUNCTION Web.hours_12(@RegDate DATETIME) RETURNS INT AS
 BEGIN
     RETURN CASE  WHEN DATEPART(HOUR, @RegDate) BETWEEN 1 AND 12 THEN 12 ELSE 0 END
 END
 GO
-CREATE FUNCTION Import.hours_6(@RegDate DATETIME) RETURNS INT AS
+CREATE FUNCTION Web.hours_6(@RegDate DATETIME) RETURNS INT AS
 BEGIN
     RETURN
 	  CASE

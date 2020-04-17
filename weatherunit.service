@@ -1,0 +1,11 @@
+[Unit]
+Description=Gunicorn instance to serve weather_project
+After=network.target
+[Service]
+User=USER_NAME
+Group=www-data
+WorkingDirectory=PROJECT_PATH
+Environment="PATH=PROJECT_PATH/yandexvenv/bin"
+ExecStart=PROJECT_PATH/weathervenv/bin/gunicorn --access-logfile PROJECT_PATH/access_log.log  --workers PROJECT_WORKERS --bind PROJECT_HOST app:app
+[Install]
+WantedBy=multi-user.target

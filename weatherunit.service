@@ -4,7 +4,7 @@ After=network.target
 [Service]
 User=USER_NAME
 Group=www-data
-WorkingDirectory=PROJECT_PATH
+WorkingDirectory=PROJECT_PATH/FlaskServer
 Environment="PATH=PROJECT_PATH/yandexvenv/bin"
 ExecStart=PROJECT_PATH/weathervenv/bin/gunicorn --access-logfile PROJECT_PATH/access_log.log  --workers PROJECT_WORKERS --bind PROJECT_HOST app:app
 [Install]

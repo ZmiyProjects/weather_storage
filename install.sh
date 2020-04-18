@@ -65,8 +65,7 @@ sqlcmd -U SA -i $(dirname $0)/MSSQL/Weather.sql
 # Копирование библиотечных файла и кода проекта
 
 mkdir $1
-cp $(dirname $0)/FlaskServer/*.py $1
-cp $(dirname $0)/uninstall.sh $1
+cp $(dirname $0)/FlaskServer/ $1 -r
 
 if (( $version_code == 1  )); then
     python -m venv $1/weathervenv
@@ -87,19 +86,8 @@ sed -e "s!PROJECT_WORKERS!$workers!;  s!PROJECT_PATH!$1!g; s/USER_NAME/$USER/; s
 sudo mv $(dirname $0)/weather.service /etc/systemd/system/
 sudo systemctl daemon-reload
 
-# Генерация скрипта, инкапсулирующего запуск приложения.
-echo 'sudo systemctl start weather.service' >> $1/start
-echo 'sudo systemctl enable weather.service' >> $1/start
-
-# Генерация скрипта, инкапсулирующего остановку приложения.
-echo 'sudo systemctl stop weather.service' >> $1/stop
-echo 'sudo systemctl disable weather.service' >> $1/stop
-
-# Генерация скрипта, инкапсулирующего вывод статуса приложения.
-echo 'sudo systemctl status weather.service' >> $1/status
+cp $(dirname $0)/commander.sh $1
 
 # Предоставление осуществляющему установку пользователю прав на запуск скриптов, инкапсулирующих базовые операции управления приложением.
-chmod u+x $1/start
-chmod u+x $1/stop
-chmod u+x $1/status
+chmod u+x $1/commander.sh
 

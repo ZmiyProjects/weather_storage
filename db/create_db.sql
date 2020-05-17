@@ -239,15 +239,6 @@ CREATE TABLE Agg.Months(
     CONSTRAINT PK_Months PRIMARY KEY (StationId, RegistrationDate)
 );
 
--- Если уже существуют логин и пользователь БД с совпадающими названиями - они будут удалены
--- Проверка существования логина
-IF EXISTS (SELECT * FROM sys.server_principals WHERE name = 'weather_user_login')
-    DROP LOGIN weather_user_login;
-IF EXISTS (SELECT * FROM sys.server_principals WHERE name = 'weather_moderator')
-    DROP LOGIN weather_moderator;
-IF EXISTS (SELECT * FROM sys.server_principals WHERE name = 'weather_customer')
-    DROP LOGIN weather_customer;
-
 -- Создание пользователей и ролей уровля базы данных
 CREATE ROLE WeatherModerator;
 CREATE ROLE WeatherCustomer;
@@ -256,37 +247,45 @@ CREATE ROLE WeatherCustomer;
 CREATE ROLE WebUser;
 
 -- Создание пользователей и ограничение доступа
-CREATE LOGIN weather_user_login WITH PASSWORD = 'WeatherUser1', DEFAULT_DATABASE = Weather;
-CREATE LOGIN weather_moderator WITH PASSWORD = 'WeatherUser1', DEFAULT_DATABASE = Weather;
-CREATE LOGIN weather_customer WITH PASSWORD = 'WeatherUser1', DEFAULT_DATABASE = Weather;
+CREATE USER weather_user WITH PASSWORD 'WeatherUser1';
+CREATE USER weather_moderator WITH PASSWORD 'WeatherUser1';
+CREATE USER weather_customer WITH PASSWORD 'WeatherUser1';
 
-CREATE USER weather_user FOR LOGIN weather_user_login;
-CREATE USER weather_moderator FOR LOGIN weather_moderator;
-CREATE USER weather_customer FOR LOGIN weather_customer;
+GRANT WebUser TO weather_user;
+GRANT WeatherModerator TO weather_moderator;
+GRANT WeatherCustomer TO weather_customer;
 
-ALTER ROLE WebUser ADD MEMBER weather_user;
-ALTER ROLE WeatherModerator ADD MEMBER weather_moderator;
-ALTER ROLE WeatherCustomer ADD MEMBER weather_customer;
+GRANT USAGE ON SCHEMA Web TO WebUser;
+GRANT USAGE ON SCHEMA Static TO WeatherCustomer;
+GRANT USAGE ON SCHEMA Import TO WeatherCustomer;
+GRANT USAGE ON SCHEMA Agg TO WeatherCustomer;
+GRANT USAGE ON SCHEMA Static TO WeatherModerator;
+GRANT USAGE ON SCHEMA Import TO WeatherModerator;
+GRANT USAGE ON SCHEMA Agg TO WeatherModerator;
+GRANT USAGE ON SCHEMA Auth TO WeatherModerator;
 
-GRANT EXECUTE ON SCHEMA::Web TO WebUser;
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA Web TO WebUser;
+GRANT EXECUTE ON ALL PROCEDURES IN SCHEMA Web TO WebUser;
 
 -- Разрешиле weather_user только чтение в рамках схемы Static, прочие операции недоступны
-GRANT SELECT ON SCHEMA::Static TO WeatherModerator;
+GRANT SELECT ON ALL TABLES IN SCHEMA Static TO WeatherModerator;
 
 -- Разрешает WeatherModerator чтение, обновление, удаление записей а также вызов функций/процедув в рамках схемы Import
-GRANT SELECT, UPDATE, DELETE, EXECUTE ON SCHEMA::Import TO WeatherModerator;
+GRANT SELECT, UPDATE, DELETE ON ALL TABLES IN SCHEMA Import TO WeatherModerator;
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA Import TO WeatherModerator;
+GRANT EXECUTE ON ALL PROCEDURES IN SCHEMA Import TO WeatherModerator;
+
 -- Работает
-DENY UPDATE, DELETE ON OBJECT::Import.Registration TO WeatherModerator;
+REVOKE UPDATE, DELETE ON Import.Registration FROM WeatherModerator;
 
 -- Разрешает weather_user запись, чтение и запуск хранимых процедур в схеме Agg
-GRANT INSERT, SELECT, EXECUTE ON SCHEMA::Agg TO WeatherModerator;
+GRANT INSERT, SELECT ON ALL TABLES IN SCHEMA Agg TO WeatherModerator;
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA Agg TO WeatherModerator;
+GRANT EXECUTE ON ALL PROCEDURES IN SCHEMA Agg TO WeatherModerator;
 
-GRANT SELECT ON SCHEMA::Static TO WeatherCustomer;
-GRANT SELECT ON SCHEMA::Import TO WeatherCustomer;
-GRANT SELECT ON SCHEMA::Agg TO WeatherCustomer;
-
--- Хранимые процедуры
-
+GRANT SELECT ON ALL TABLES IN SCHEMA Static TO WeatherCustomer;
+GRANT SELECT ON ALL TABLES IN SCHEMA Import TO WeatherCustomer;
+GRANT SELECT ON ALL TABLES IN SCHEMA Agg TO WeatherCustomer;
 
 CREATE OR REPLACE FUNCTION Web.users_json() RETURNS json AS
     $$
@@ -367,24 +366,24 @@ CREATE OR REPLACE FUNCTION Web.init_user(_UserName VARCHAR(50)) RETURNS VARCHAR(
     $$ LANGUAGE PLpgSQL;
 
 
-/*CREATE OR ALTER PROCEDURE Web.update_user_json(@json NVARCHAR(MAX), @UserId INT) AS
-BEGIN
-    IF NOT EXISTS(SELECT * FROM Auth.UserData WHERE UserId = @UserId)
-        THROW 51002, N'Пользователь с заданным идентификатором отсутствует!', 11;
-    UPDATE Auth.UserData SET
+CREATE OR REPLACE PROCEDURE Web.update_user_json(_values json, _UserId INT) AS
+    $$
+    BEGIN
+    IF NOT EXISTS(SELECT * FROM Auth.UserData WHERE UserId = @UserId) THEN
+        RAISE EXCEPTION N'Пользователь с заданным идентификатором отсутствует!' USING ERRCODE = 51002;
+    ELSE
+      UPDATE Auth.UserData SET
 	    UserLogin = COALESCE(T.JUserLogin, UserLogin),
-		PasswordHash = COALESCE(HASHBYTES('SHA2_256', T.JPassword), PasswordHash),
+		PasswordHash = COALESCE(T.JPassword, PasswordHash),
 		RoleId = COALESCE(T.JRoleId, RoleId)
-	FROM (
-	    SELECT J.UserLogin AS JUserLogin, J.Password AS JPassword, J.RoleId As JRoleId
-		FROM OPENJSON(@json) WITH (
-		    UserLogin VARCHAR(50),
-			Password VARCHAR(30),
-			RoleId INT
-		) AS J
-	) AS T
-	WHERE UserId = @UserId;
-END*/
+	  FROM (
+	    SELECT J.UserLogin AS JUserLogin, J.PasswordHash AS JPassword, J.RoleId As JRoleId
+		FROM json_populate_recordset(NULL::Auth.UserData, _values) AS J
+	  ) AS T
+	  WHERE UserId = _UserId;
+    END IF;
+END
+    $$ LANGUAGE PLpgSQL;
 
 CREATE OR REPLACE PROCEDURE Web.update_user(
     _UserId INT DEFAULT NULL,
@@ -421,19 +420,15 @@ CREATE OR REPLACE FUNCTION Web.select_user(_UserId INT) RETURNS json AS
     $$ LANGUAGE PLpgSQL;
 
 -- На python
-/*
-CREATE OR ALTER FUNCTION Web.check_password(@UserName VARCHAR(30), @Password VARCHAR(50)) RETURNS BIT AS
-BEGIN
-    IF EXISTS(SELECT * FROM Auth.UserData WHERE UserLogin = @UserName)
-        IF HASHBYTES('SHA2_256', @Password) = (SELECT PasswordHash FROM Auth.UserData WHERE UserLogin = @UserName)
-		    RETURN 1;
-		ELSE
-		  RETURN 0;
-    RETURN 0;
-END*/
+
+CREATE OR REPLACE FUNCTION Web.check_password(_UserName VARCHAR(30)) RETURNS VARCHAR(255) AS
+    $$
+    BEGIN
+        RETURN ( SELECT PasswordHash FROM Auth.UserData WHERE UserLogin = _UserName);
+    END
+    $$ LANGUAGE PLpgSQL;
 
 -- Вставка в БД сведений о одной стране из JSON (TotalArea вычисляется во время вставки)
-
 CREATE OR REPLACE PROCEDURE Web.insert_country_json(_values json) AS
     $$
     BEGIN
@@ -639,7 +634,7 @@ CREATE PROCEDURE Web.delete_locality(_LocalityId INT) AS
         IF NOT EXISTS(SELECT * FROM Import.Locality WHERE LocalityId = @LocalityId) THEN
             RAISE EXCEPTION N'Населённый пункт с заданным идентификатором отсутствует!' USING ERRCODE = 51004;
         ELSE
-            DELETE FROM Import.Locality WHERE LocalityId = @LocalityId;
+            DELETE FROM Import.Locality WHERE LocalityId = _LocalityId;
         END IF;
     END
     $$ LANGUAGE PLpgSQL;
@@ -651,7 +646,7 @@ CREATE PROCEDURE Web.delete_organization(_OrganizationId INT) AS
         IF NOT EXISTS(SELECT * FROM Import.Organization WHERE OrganizationId = @OrganizationId) THEN
             RAISE EXCEPTION N'Организация с заданным идентификатором отсутствует!' USING ERRCODE = 51005;
         ELSE
-            DELETE FROM Import.Organization WHERE OrganizationId = @OrganizationId;
+            DELETE FROM Import.Organization WHERE OrganizationId = _OrganizationId;
         END IF;
     END
     $$ LANGUAGE PLpgSQL;
@@ -663,7 +658,7 @@ CREATE PROCEDURE Web.delete_station(_StationId INT) AS
         IF NOT EXISTS(SELECT * FROM Import.Station WHERE StationId = @StationId) THEN
             RAISE EXCEPTION N'Организация с заданным идентификатором отсутствует!' USING ERRCODE = 51006;
         ELSE
-            DELETE FROM Import.Station WHERE StationId = @StationId;
+            DELETE FROM Import.Station WHERE StationId = _StationId;
         END IF;
     END
     $$ LANGUAGE PLpgSQL;
@@ -786,7 +781,6 @@ CREATE FUNCTION Import.func_calculate_total() RETURNS TRIGGER AS
 CREATE TRIGGER calculate_total AFTER UPDATE OR INSERT ON Import.Country
     REFERENCING NEW TABLE AS inserted
     FOR EACH STATEMENT EXECUTE FUNCTION Import.func_calculate_total();
-
 
 -- Функции возвращающие содержимое таблиц в формаье JSON
 -- Получить все страны
@@ -995,7 +989,7 @@ END
     $$ LANGUAGE PLpgSQL;
 
 -- Получить зарегистрированные на метеостанции данные в заданном диапозоне в формате JSON
-CREATE FUNCTION Web.registration_diapason_json(_StationId INT, _d_begin DATETIME, _d_end DATETIME) RETURNS json AS
+CREATE FUNCTION Web.registration_diapason_json(_StationId INT, _d_begin TIMESTAMP, _d_end TIMESTAMP) RETURNS json AS
     $$
 BEGIN
      RETURN (
@@ -1018,155 +1012,345 @@ BEGIN
 END
     $$ LANGUAGE PLpgSQL;
 
-
 -- Получить метеоданные, агрегированные за месяц
-CREATE FUNCTION Web.months_json(@StationId INT) RETURNS NVARCHAR(MAX) AS
+CREATE FUNCTION Web.months_json(_StationId INT) RETURNS json AS
+    $$
     BEGIN
         RETURN (
-        SELECT
-            StationId, RegistrationDate, TemperatureAVG, TemperatureMAX, TemperatureMIN, DewPointAVG, DewPointMAX, DewPointMIN,
-            PressureAVG, PressureMAX, PressureMIN, PressureStationLevelAVG, PressureStationLevelMAX, PressureStationLevelMIN,
-            HumidityAVG, HumidityMAX, HumidityMIN, VisibleRangeAVG, VisibleRangeMAX, VisibleRangeMIN, WindSpeedAVG, WindSpeedMAX, WindSpeedMIN
+        SELECT json_build_object(
+            'StationId', StationId,
+            'RegistrationDate', RegistrationDate,
+            'TemperatureAVG', TemperatureAVG,
+            'TemperatureMAX', TemperatureMAX,
+            'TemperatureMIN', TemperatureMIN,
+            'DewPointAVG', DewPointAVG,
+            'DewPointMAX', DewPointMAX,
+            'DewPointMIN', DewPointMIN,
+            'PressureAVG', PressureAVG,
+            'PressureMAX', PressureMAX,
+            'PressureMIN', PressureMIN,
+            'PressureStationLevelAVG', PressureStationLevelAVG,
+            'PressureStationLevelMAX', PressureStationLevelMAX,
+            'PressureStationLevelMIN', PressureStationLevelMIN,
+            'HumidityAVG', HumidityAVG,
+            'HumidityMAX', HumidityMAX,
+            'HumidityMIN', HumidityMIN,
+            'VisibleRangeAVG', VisibleRangeAVG,
+            'VisibleRangeMAX', VisibleRangeMAX,
+            'VisibleRangeMIN', VisibleRangeMIN,
+            'WindSpeedAVG', WindSpeedAVG,
+            'WindSpeedMAX', WindSpeedMAX,
+            'WindSpeedMIN', WindSpeedMIN)
         FROM Agg.Months
-        WHERE StationId = @StationId FOR JSON PATH);
+        WHERE StationId = _StationId);
     END
-GO
+    $$ LANGUAGE PLpgSQL;
+
 -- Получить метеоданные, агрегированные за месяц в заданном диапозоне
-CREATE FUNCTION Web.months_json_diapason(@StationId INT, @d_begin DATETIME, @d_end DATETIME) RETURNS NVARCHAR(MAX) AS
+CREATE FUNCTION Web.months_json_diapason(_StationId INT, _d_begin TIMESTAMP, _d_end TIMESTAMP) RETURNS json AS
+    $$
     BEGIN
         RETURN (
-        SELECT
-            StationId, RegistrationDate, TemperatureAVG, TemperatureMAX, TemperatureMIN, DewPointAVG, DewPointMAX, DewPointMIN,
-            PressureAVG, PressureMAX, PressureMIN, PressureStationLevelAVG, PressureStationLevelMAX, PressureStationLevelMIN,
-            HumidityAVG, HumidityMAX, HumidityMIN, VisibleRangeAVG, VisibleRangeMAX, VisibleRangeMIN, WindSpeedAVG, WindSpeedMAX, WindSpeedMIN
+        SELECT json_build_object(
+            'StationId', StationId,
+            'RegistrationDate', RegistrationDate,
+            'TemperatureAVG', TemperatureAVG,
+            'TemperatureMAX', TemperatureMAX,
+            'TemperatureMIN', TemperatureMIN,
+            'DewPointAVG', DewPointAVG,
+            'DewPointMAX', DewPointMAX,
+            'DewPointMIN', DewPointMIN,
+            'PressureAVG', PressureAVG,
+            'PressureMAX', PressureMAX,
+            'PressureMIN', PressureMIN,
+            'PressureStationLevelAVG', PressureStationLevelAVG,
+            'PressureStationLevelMAX', PressureStationLevelMAX,
+            'PressureStationLevelMIN', PressureStationLevelMIN,
+            'HumidityAVG', HumidityAVG,
+            'HumidityMAX', HumidityMAX,
+            'HumidityMIN', HumidityMIN,
+            'VisibleRangeAVG', VisibleRangeAVG,
+            'VisibleRangeMAX', VisibleRangeMAX,
+            'VisibleRangeMIN', VisibleRangeMIN,
+            'WindSpeedAVG', WindSpeedAVG,
+            'WindSpeedMAX', WindSpeedMAX,
+            'WindSpeedMIN', WindSpeedMIN)
         FROM Agg.Months
-        WHERE StationId = @StationId AND RegistrationDate BETWEEN @d_begin AND @d_end FOR JSON PATH);
+        WHERE StationId = _StationId AND RegistrationDate BETWEEN _d_begin AND _d_end);
     END
-GO
+    $$ LANGUAGE PLpgSQL;
+
 -- Получить метеоданные, агрегированные за неделю
-CREATE FUNCTION Web.weeks_json(@StationId INT) RETURNS NVARCHAR(MAX) AS
+CREATE FUNCTION Web.weeks_json(_StationId INT) RETURNS json AS
+    $$
     BEGIN
         RETURN (
-        SELECT
-            StationId, RegistrationDate, TemperatureAVG, TemperatureMAX, TemperatureMIN, DewPointAVG, DewPointMAX, DewPointMIN,
-            PressureAVG, PressureMAX, PressureMIN, PressureStationLevelAVG, PressureStationLevelMAX, PressureStationLevelMIN,
-            HumidityAVG, HumidityMAX, HumidityMIN, VisibleRangeAVG, VisibleRangeMAX, VisibleRangeMIN, WindSpeedAVG, WindSpeedMAX, WindSpeedMIN
+        SELECT json_build_object(
+            'StationId', StationId,
+            'RegistrationDate', RegistrationDate,
+            'TemperatureAVG', TemperatureAVG,
+            'TemperatureMAX', TemperatureMAX,
+            'TemperatureMIN', TemperatureMIN,
+            'DewPointAVG', DewPointAVG,
+            'DewPointMAX', DewPointMAX,
+            'DewPointMIN', DewPointMIN,
+            'PressureAVG', PressureAVG,
+            'PressureMAX', PressureMAX,
+            'PressureMIN', PressureMIN,
+            'PressureStationLevelAVG', PressureStationLevelAVG,
+            'PressureStationLevelMAX', PressureStationLevelMAX,
+            'PressureStationLevelMIN', PressureStationLevelMIN,
+            'HumidityAVG', HumidityAVG,
+            'HumidityMAX', HumidityMAX,
+            'HumidityMIN', HumidityMIN,
+            'VisibleRangeAVG', VisibleRangeAVG,
+            'VisibleRangeMAX', VisibleRangeMAX,
+            'VisibleRangeMIN', VisibleRangeMIN,
+            'WindSpeedAVG', WindSpeedAVG,
+            'WindSpeedMAX', WindSpeedMAX,
+            'WindSpeedMIN', WindSpeedMIN)
         FROM Agg.Weeks
-        WHERE StationId = @StationId FOR JSON PATH);
+        WHERE StationId = _StationId);
     END
-GO
+    $$ LANGUAGE PLpgSQL;
+
 -- Получить метеоданные, агрегированные за неделю в заданном диапозоне
-CREATE FUNCTION Web.weeks_json_diapason(@StationId INT, @d_begin DATETIME, @d_end DATETIME) RETURNS NVARCHAR(MAX) AS
+CREATE FUNCTION Web.weeks_json_diapason(_StationId INT, _d_begin TIMESTAMP, _d_end TIMESTAMP) RETURNS json AS
+    $$
     BEGIN
         RETURN (
-        SELECT
-            StationId, RegistrationDate, TemperatureAVG, TemperatureMAX, TemperatureMIN, DewPointAVG, DewPointMAX, DewPointMIN,
-            PressureAVG, PressureMAX, PressureMIN, PressureStationLevelAVG, PressureStationLevelMAX, PressureStationLevelMIN,
-            HumidityAVG, HumidityMAX, HumidityMIN, VisibleRangeAVG, VisibleRangeMAX, VisibleRangeMIN, WindSpeedAVG, WindSpeedMAX, WindSpeedMIN
+        SELECT json_build_object(
+            'StationId', StationId,
+            'RegistrationDate', RegistrationDate,
+            'TemperatureAVG', TemperatureAVG,
+            'TemperatureMAX', TemperatureMAX,
+            'TemperatureMIN', TemperatureMIN,
+            'DewPointAVG', DewPointAVG,
+            'DewPointMAX', DewPointMAX,
+            'DewPointMIN', DewPointMIN,
+            'PressureAVG', PressureAVG,
+            'PressureMAX', PressureMAX,
+            'PressureMIN', PressureMIN,
+            'PressureStationLevelAVG', PressureStationLevelAVG,
+            'PressureStationLevelMAX', PressureStationLevelMAX,
+            'PressureStationLevelMIN', PressureStationLevelMIN,
+            'HumidityAVG', HumidityAVG,
+            'HumidityMAX', HumidityMAX,
+            'HumidityMIN', HumidityMIN,
+            'VisibleRangeAVG', VisibleRangeAVG,
+            'VisibleRangeMAX', VisibleRangeMAX,
+            'VisibleRangeMIN', VisibleRangeMIN,
+            'WindSpeedAVG', WindSpeedAVG,
+            'WindSpeedMAX', WindSpeedMAX,
+            'WindSpeedMIN', WindSpeedMIN)
         FROM Agg.Weeks
-        WHERE StationId = @StationId AND RegistrationDate BETWEEN @d_begin AND @d_end FOR JSON PATH);
+        WHERE StationId = _StationId AND RegistrationDate BETWEEN _d_begin AND _d_end);
     END
-GO
+    $$ LANGUAGE PLpgSQL;
+
 -- Получить метеоданные, агрегированные за день
-CREATE FUNCTION Web.days_json(@StationId INT) RETURNS NVARCHAR(MAX) AS
+CREATE FUNCTION Web.days_json(_StationId INT) RETURNS json AS
+    $$
     BEGIN
         RETURN (
-        SELECT
-            StationId, RegistrationDate, TemperatureAVG, TemperatureMAX, TemperatureMIN, DewPointAVG, DewPointMAX, DewPointMIN,
-            PressureAVG, PressureMAX, PressureMIN, PressureStationLevelAVG, PressureStationLevelMAX, PressureStationLevelMIN,
-            HumidityAVG, HumidityMAX, HumidityMIN, VisibleRangeAVG, VisibleRangeMAX, VisibleRangeMIN, WindSpeedAVG, WindSpeedMAX, WindSpeedMIN
+        SELECT json_build_object(
+            'StationId', StationId,
+            'RegistrationDate', RegistrationDate,
+            'TemperatureAVG', TemperatureAVG,
+            'TemperatureMAX', TemperatureMAX,
+            'TemperatureMIN', TemperatureMIN,
+            'DewPointAVG', DewPointAVG,
+            'DewPointMAX', DewPointMAX,
+            'DewPointMIN', DewPointMIN,
+            'PressureAVG', PressureAVG,
+            'PressureMAX', PressureMAX,
+            'PressureMIN', PressureMIN,
+            'PressureStationLevelAVG', PressureStationLevelAVG,
+            'PressureStationLevelMAX', PressureStationLevelMAX,
+            'PressureStationLevelMIN', PressureStationLevelMIN,
+            'HumidityAVG', HumidityAVG,
+            'HumidityMAX', HumidityMAX,
+            'HumidityMIN', HumidityMIN,
+            'VisibleRangeAVG', VisibleRangeAVG,
+            'VisibleRangeMAX', VisibleRangeMAX,
+            'VisibleRangeMIN', VisibleRangeMIN,
+            'WindSpeedAVG', WindSpeedAVG,
+            'WindSpeedMAX', WindSpeedMAX,
+            'WindSpeedMIN', WindSpeedMIN)
         FROM Agg.Days
-        WHERE StationId = @StationId FOR JSON PATH);
+        WHERE StationId = _StationId FOR);
     END
-GO
+    $$ LANGUAGE PLpgSQL;
+
 -- Получить метеоданные, агрегированные за день в заданном диапозоне
-CREATE FUNCTION Agg.days_json_diapason(@StationId INT, @d_begin DATETIME, @d_end DATETIME) RETURNS NVARCHAR(MAX) AS
+CREATE FUNCTION Agg.days_json_diapason(_StationId INT, _d_begin TIMESTAMP, _d_end TIMESTAMP) RETURNS json AS
+    $$
     BEGIN
         RETURN (
-        SELECT
-            StationId, RegistrationDate, TemperatureAVG, TemperatureMAX, TemperatureMIN, DewPointAVG, DewPointMAX, DewPointMIN,
-            PressureAVG, PressureMAX, PressureMIN, PressureStationLevelAVG, PressureStationLevelMAX, PressureStationLevelMIN,
-            HumidityAVG, HumidityMAX, HumidityMIN, VisibleRangeAVG, VisibleRangeMAX, VisibleRangeMIN, WindSpeedAVG, WindSpeedMAX, WindSpeedMIN
+        SELECT json_build_object(
+            'StationId', StationId,
+            'RegistrationDate', RegistrationDate,
+            'TemperatureAVG', TemperatureAVG,
+            'TemperatureMAX', TemperatureMAX,
+            'TemperatureMIN', TemperatureMIN,
+            'DewPointAVG', DewPointAVG,
+            'DewPointMAX', DewPointMAX,
+            'DewPointMIN', DewPointMIN,
+            'PressureAVG', PressureAVG,
+            'PressureMAX', PressureMAX,
+            'PressureMIN', PressureMIN,
+            'PressureStationLevelAVG', PressureStationLevelAVG,
+            'PressureStationLevelMAX', PressureStationLevelMAX,
+            'PressureStationLevelMIN', PressureStationLevelMIN,
+            'HumidityAVG', HumidityAVG,
+            'HumidityMAX', HumidityMAX,
+            'HumidityMIN', HumidityMIN,
+            'VisibleRangeAVG', VisibleRangeAVG,
+            'VisibleRangeMAX', VisibleRangeMAX,
+            'VisibleRangeMIN', VisibleRangeMIN,
+            'WindSpeedAVG', WindSpeedAVG,
+            'WindSpeedMAX', WindSpeedMAX,
+            'WindSpeedMIN', WindSpeedMIN)
         FROM Agg.Days
-        WHERE StationId = @StationId AND RegistrationDate BETWEEN @d_begin AND @d_end FOR JSON PATH);
+        WHERE StationId = _StationId AND RegistrationDate BETWEEN _d_begin AND _d_end);
     END
-GO
+    $$ LANGUAGE PLpgSQL;
+
 -- Получить метеоданные, агрегированные за 12 часов
-CREATE FUNCTION Web.hours12_json(@StationId INT) RETURNS NVARCHAR(MAX) AS
+CREATE FUNCTION Web.hours12_json(_StationId INT) RETURNS json AS
+    $$
     BEGIN
         RETURN (
-        SELECT
-            StationId, RegistrationDate, TemperatureAVG, TemperatureMAX, TemperatureMIN, DewPointAVG, DewPointMAX, DewPointMIN,
-            PressureAVG, PressureMAX, PressureMIN, PressureStationLevelAVG, PressureStationLevelMAX, PressureStationLevelMIN,
-            HumidityAVG, HumidityMAX, HumidityMIN, VisibleRangeAVG, VisibleRangeMAX, VisibleRangeMIN, WindSpeedAVG, WindSpeedMAX, WindSpeedMIN
+        SELECT json_build_object(
+            'StationId', StationId,
+            'RegistrationDate', RegistrationDate,
+            'TemperatureAVG', TemperatureAVG,
+            'TemperatureMAX', TemperatureMAX,
+            'TemperatureMIN', TemperatureMIN,
+            'DewPointAVG', DewPointAVG,
+            'DewPointMAX', DewPointMAX,
+            'DewPointMIN', DewPointMIN,
+            'PressureAVG', PressureAVG,
+            'PressureMAX', PressureMAX,
+            'PressureMIN', PressureMIN,
+            'PressureStationLevelAVG', PressureStationLevelAVG,
+            'PressureStationLevelMAX', PressureStationLevelMAX,
+            'PressureStationLevelMIN', PressureStationLevelMIN,
+            'HumidityAVG', HumidityAVG,
+            'HumidityMAX', HumidityMAX,
+            'HumidityMIN', HumidityMIN,
+            'VisibleRangeAVG', VisibleRangeAVG,
+            'VisibleRangeMAX', VisibleRangeMAX,
+            'VisibleRangeMIN', VisibleRangeMIN,
+            'WindSpeedAVG', WindSpeedAVG,
+            'WindSpeedMAX', WindSpeedMAX,
+            'WindSpeedMIN', WindSpeedMIN)
         FROM Agg.Hours12
-        WHERE StationId = @StationId FOR JSON PATH);
+        WHERE StationId = _StationId);
     END
-GO
+    $$ LANGUAGE PLpgSQL;
+
 -- Получить метеооданные, агрегированные за 12 часов в заданном диапозоне
-CREATE FUNCTION Web.hours12_json_diapason(@StationId INT, @d_begin DATETIME, @d_end DATETIME) RETURNS NVARCHAR(MAX) AS
+CREATE FUNCTION Web.hours12_json_diapason(_StationId INT, _d_begin TIMESTAMP, _d_end TIMESTAMP) RETURNS json AS
+    $$
     BEGIN
         RETURN (
-        SELECT
-            StationId, RegistrationDate, TemperatureAVG, TemperatureMAX, TemperatureMIN, DewPointAVG, DewPointMAX, DewPointMIN,
-            PressureAVG, PressureMAX, PressureMIN, PressureStationLevelAVG, PressureStationLevelMAX, PressureStationLevelMIN,
-            HumidityAVG, HumidityMAX, HumidityMIN, VisibleRangeAVG, VisibleRangeMAX, VisibleRangeMIN, WindSpeedAVG, WindSpeedMAX, WindSpeedMIN
+        SELECT json_build_object(
+            'StationId', StationId,
+            'RegistrationDate', RegistrationDate,
+            'TemperatureAVG', TemperatureAVG,
+            'TemperatureMAX', TemperatureMAX,
+            'TemperatureMIN', TemperatureMIN,
+            'DewPointAVG', DewPointAVG,
+            'DewPointMAX', DewPointMAX,
+            'DewPointMIN', DewPointMIN,
+            'PressureAVG', PressureAVG,
+            'PressureMAX', PressureMAX,
+            'PressureMIN', PressureMIN,
+            'PressureStationLevelAVG', PressureStationLevelAVG,
+            'PressureStationLevelMAX', PressureStationLevelMAX,
+            'PressureStationLevelMIN', PressureStationLevelMIN,
+            'HumidityAVG', HumidityAVG,
+            'HumidityMAX', HumidityMAX,
+            'HumidityMIN', HumidityMIN,
+            'VisibleRangeAVG', VisibleRangeAVG,
+            'VisibleRangeMAX', VisibleRangeMAX,
+            'VisibleRangeMIN', VisibleRangeMIN,
+            'WindSpeedAVG', WindSpeedAVG,
+            'WindSpeedMAX', WindSpeedMAX,
+            'WindSpeedMIN', WindSpeedMIN)
         FROM Agg.Hours12
-        WHERE StationId = @StationId AND RegistrationDate BETWEEN @d_begin AND @d_end FOR JSON PATH);
+        WHERE StationId = _StationId AND RegistrationDate BETWEEN _d_begin AND _d_end);
     END
-GO
+    $$ LANGUAGE PLpgSQL;
+
 -- Получить метеоданные, агрегированные за 6 часов
-CREATE FUNCTION Web.hours6_json(@StationId INT) RETURNS NVARCHAR(MAX) AS
+CREATE FUNCTION Web.hours6_json(_StationId INT) RETURNS json AS
+    $$
     BEGIN
         RETURN (
-        SELECT
-            StationId, RegistrationDate, TemperatureAVG, TemperatureMAX, TemperatureMIN, DewPointAVG, DewPointMAX, DewPointMIN,
-            PressureAVG, PressureMAX, PressureMIN, PressureStationLevelAVG, PressureStationLevelMAX, PressureStationLevelMIN,
-            HumidityAVG, HumidityMAX, HumidityMIN, VisibleRangeAVG, VisibleRangeMAX, VisibleRangeMIN, WindSpeedAVG, WindSpeedMAX, WindSpeedMIN
+        SELECT json_build_object(
+            'StationId', StationId,
+            'RegistrationDate', RegistrationDate,
+            'TemperatureAVG', TemperatureAVG,
+            'TemperatureMAX', TemperatureMAX,
+            'TemperatureMIN', TemperatureMIN,
+            'DewPointAVG', DewPointAVG,
+            'DewPointMAX', DewPointMAX,
+            'DewPointMIN', DewPointMIN,
+            'PressureAVG', PressureAVG,
+            'PressureMAX', PressureMAX,
+            'PressureMIN', PressureMIN,
+            'PressureStationLevelAVG', PressureStationLevelAVG,
+            'PressureStationLevelMAX', PressureStationLevelMAX,
+            'PressureStationLevelMIN', PressureStationLevelMIN,
+            'HumidityAVG', HumidityAVG,
+            'HumidityMAX', HumidityMAX,
+            'HumidityMIN', HumidityMIN,
+            'VisibleRangeAVG', VisibleRangeAVG,
+            'VisibleRangeMAX', VisibleRangeMAX,
+            'VisibleRangeMIN', VisibleRangeMIN,
+            'WindSpeedAVG', WindSpeedAVG,
+            'WindSpeedMAX', WindSpeedMAX,
+            'WindSpeedMIN', WindSpeedMIN)
         FROM Agg.Hours6
-        WHERE StationId = @StationId FOR JSON PATH);
+        WHERE StationId = _StationId);
     END
-GO
+    $$ LANGUAGE PLpgSQL;
+
 -- Получить метеооданные, агрегированные за 6 часов в заданном диапозоне
-CREATE FUNCTION Web.hours6_json_diapason(@StationId INT, @d_begin DATETIME, @d_end DATETIME) RETURNS NVARCHAR(MAX) AS
+CREATE FUNCTION Web.hours6_json_diapason(_StationId INT, _d_begin TIMESTAMP, _d_end TIMESTAMP) RETURNS json AS
+    $$
     BEGIN
         RETURN (
-        SELECT
-            StationId, RegistrationDate, TemperatureAVG, TemperatureMAX, TemperatureMIN, DewPointAVG, DewPointMAX, DewPointMIN,
-            PressureAVG, PressureMAX, PressureMIN, PressureStationLevelAVG, PressureStationLevelMAX, PressureStationLevelMIN,
-            HumidityAVG, HumidityMAX, HumidityMIN, VisibleRangeAVG, VisibleRangeMAX, VisibleRangeMIN, WindSpeedAVG, WindSpeedMAX, WindSpeedMIN
+        SELECT json_build_object(
+            'StationId', StationId,
+            'RegistrationDate', RegistrationDate,
+            'TemperatureAVG', TemperatureAVG,
+            'TemperatureMAX', TemperatureMAX,
+            'TemperatureMIN', TemperatureMIN,
+            'DewPointAVG', DewPointAVG,
+            'DewPointMAX', DewPointMAX,
+            'DewPointMIN', DewPointMIN,
+            'PressureAVG', PressureAVG,
+            'PressureMAX', PressureMAX,
+            'PressureMIN', PressureMIN,
+            'PressureStationLevelAVG', PressureStationLevelAVG,
+            'PressureStationLevelMAX', PressureStationLevelMAX,
+            'PressureStationLevelMIN', PressureStationLevelMIN,
+            'HumidityAVG', HumidityAVG,
+            'HumidityMAX', HumidityMAX,
+            'HumidityMIN', HumidityMIN,
+            'VisibleRangeAVG', VisibleRangeAVG,
+            'VisibleRangeMAX', VisibleRangeMAX,
+            'VisibleRangeMIN', VisibleRangeMIN,
+            'WindSpeedAVG', WindSpeedAVG,
+            'WindSpeedMAX', WindSpeedMAX,
+            'WindSpeedMIN', WindSpeedMIN)
         FROM Agg.Hours6
-        WHERE StationId = @StationId AND RegistrationDate BETWEEN @d_begin AND @d_end FOR JSON PATH);
+        WHERE StationId = _StationId AND RegistrationDate BETWEEN _d_begin AND _d_end);
     END
-GO
-
--- Получить зарегистрированные на метеостанции данные в формате XML
-CREATE OR ALTER FUNCTION Web.registration_xml(@StationId INT) RETURNS NVARCHAR(MAX) AS
-BEGIN
-    RETURN (
-        SELECT
-           StationId, RegistrationDate, Temperature, DewPoint, Pressure, PressureStationLevel,
-           Humidity, VisibleRange, WindSpeed, Weather, WindDirectionId, CloudinessId
-        FROM Import.Registration
-        WHERE StationId = @StationId
-        FOR XML PATH, root('Registration')
-        );
-END
-
-GO
--- Получить зарегистрированные на метеостанции данные в заданном диапозоне в формате XML
-CREATE OR ALTER FUNCTION Web.registration_diapason_xml(@StationId INT, @d_begin DATETIME, @d_end DATETIME) RETURNS NVARCHAR(MAX) AS
-BEGIN
-    RETURN (
-        SELECT
-           StationId, RegistrationDate, Temperature, DewPoint, Pressure, PressureStationLevel,
-           Humidity, VisibleRange, WindSpeed, Weather, WindDirectionId, CloudinessId
-        FROM Import.Registration
-        WHERE StationId = @StationId AND RegistrationDate BETWEEN @d_begin AND @d_end
-        FOR XML PATH, root('Registration')
-        );
-END
-GO
+    $$ LANGUAGE PLpgSQL;
 
 -- Получить содержание справочника облачности
 CREATE FUNCTION Web.get_cloudiness_json() RETURNS json AS
@@ -1200,7 +1384,7 @@ END
 CREATE FUNCTION Web.hours_12(_RegDate TIMESTAMP) RETURNS INT AS
     $$
     BEGIN
-        RETURN CASE  WHEN EXTRACT(HOUR FROM _RegDate) BETWEEN 1 AND 12 THEN 12 ELSE 0 END
+        RETURN CASE WHEN EXTRACT(HOUR FROM _RegDate) BETWEEN 1 AND 12 THEN 12 ELSE 0 END;
     END
     $$ LANGUAGE PLpgSQL;
 

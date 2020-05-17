@@ -1,3 +1,8 @@
+/*
+CREATE DATABASE test_1;
+\connect test_1;
+*/
+
 -- Создание схем
 CREATE SCHEMA Import;
 
@@ -271,7 +276,7 @@ GRANT EXECUTE ON ALL PROCEDURES IN SCHEMA Web TO WebUser;
 GRANT SELECT ON ALL TABLES IN SCHEMA Static TO WeatherModerator;
 
 -- Разрешает WeatherModerator чтение, обновление, удаление записей а также вызов функций/процедув в рамках схемы Import
-GRANT SELECT, UPDATE, DELETE ON ALL TABLES IN SCHEMA Import TO WeatherModerator;
+GRANT INSERT, SELECT, UPDATE, DELETE ON ALL TABLES IN SCHEMA Import TO WeatherModerator;
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA Import TO WeatherModerator;
 GRANT EXECUTE ON ALL PROCEDURES IN SCHEMA Import TO WeatherModerator;
 
@@ -348,7 +353,7 @@ CREATE OR REPLACE PROCEDURE Web.delete_user(_UserId INT) AS
     $$
     BEGIN
         IF NOT EXISTS(SELECT * FROM Auth.UserData WHERE UserId = @UserId) THEN
-            RAISE EXCEPTION N'Пользователь не существует!' USING ERRCODE = 51009;
+            RAISE EXCEPTION 'Пользователь не существует!' USING ERRCODE = 51009;
         ELSE
             DELETE FROM Auth.UserData WHERE UserId = _UserId;
         END IF;
@@ -370,7 +375,7 @@ CREATE OR REPLACE PROCEDURE Web.update_user_json(_values json, _UserId INT) AS
     $$
     BEGIN
     IF NOT EXISTS(SELECT * FROM Auth.UserData WHERE UserId = @UserId) THEN
-        RAISE EXCEPTION N'Пользователь с заданным идентификатором отсутствует!' USING ERRCODE = 51002;
+        RAISE EXCEPTION 'Пользователь с заданным идентификатором отсутствует!' USING ERRCODE = 51002;
     ELSE
       UPDATE Auth.UserData SET
 	    UserLogin = COALESCE(T.JUserLogin, UserLogin),
@@ -394,7 +399,7 @@ AS
     $$
     BEGIN
         IF NOT EXISTS(SELECT * FROM Auth.UserData WHERE UserId = @UserId) THEN
-            RAISE N'Пользователь не существует!' USING ERRCODE = 51009;
+            RAISE 'Пользователь не существует!' USING ERRCODE = 51009;
         ELSE
             UPDATE Auth.UserData SET
                 UserLogin = COALESCE(_NewLogin, UserLogin),
@@ -608,7 +613,7 @@ CREATE PROCEDURE Web.delete_country(_CountryId INT) AS
     $$
     BEGIN
         IF NOT EXISTS(SELECT * FROM Import.Country WHERE CountryId = _CountryId) THEN
-            RAISE EXCEPTION N'Страна с заданным идентификатором отсутствует!' USING ERRCODE = 51002;
+            RAISE EXCEPTION 'Страна с заданным идентификатором отсутствует!' USING ERRCODE = 51002;
         ELSE
             DELETE FROM Import.Country WHERE CountryId = _CountryId;
         END IF;
@@ -620,7 +625,7 @@ CREATE PROCEDURE Web.delete_region(_RegionId INT) AS
     $$
     BEGIN
         IF NOT EXISTS(SELECT * FROM Import.Region WHERE RegionId = _RegionId) THEN
-            RAISE EXCEPTION N'Регион с заданным идентификатором отсутствует!' USING ERRCODE = 51003;
+            RAISE EXCEPTION 'Регион с заданным идентификатором отсутствует!' USING ERRCODE = 51003;
         ELSE
             DELETE FROM Import.Region WHERE RegionId = _RegionId;
         END IF;
@@ -632,7 +637,7 @@ CREATE PROCEDURE Web.delete_locality(_LocalityId INT) AS
     $$
     BEGIN
         IF NOT EXISTS(SELECT * FROM Import.Locality WHERE LocalityId = @LocalityId) THEN
-            RAISE EXCEPTION N'Населённый пункт с заданным идентификатором отсутствует!' USING ERRCODE = 51004;
+            RAISE EXCEPTION 'Населённый пункт с заданным идентификатором отсутствует!' USING ERRCODE = 51004;
         ELSE
             DELETE FROM Import.Locality WHERE LocalityId = _LocalityId;
         END IF;
@@ -644,7 +649,7 @@ CREATE PROCEDURE Web.delete_organization(_OrganizationId INT) AS
     $$
     BEGIN
         IF NOT EXISTS(SELECT * FROM Import.Organization WHERE OrganizationId = @OrganizationId) THEN
-            RAISE EXCEPTION N'Организация с заданным идентификатором отсутствует!' USING ERRCODE = 51005;
+            RAISE EXCEPTION 'Организация с заданным идентификатором отсутствует!' USING ERRCODE = 51005;
         ELSE
             DELETE FROM Import.Organization WHERE OrganizationId = _OrganizationId;
         END IF;
@@ -656,7 +661,7 @@ CREATE PROCEDURE Web.delete_station(_StationId INT) AS
     $$
     BEGIN
         IF NOT EXISTS(SELECT * FROM Import.Station WHERE StationId = @StationId) THEN
-            RAISE EXCEPTION N'Организация с заданным идентификатором отсутствует!' USING ERRCODE = 51006;
+            RAISE EXCEPTION 'Организация с заданным идентификатором отсутствует!' USING ERRCODE = 51006;
         ELSE
             DELETE FROM Import.Station WHERE StationId = _StationId;
         END IF;
@@ -668,7 +673,7 @@ CREATE OR REPLACE PROCEDURE Web.update_country(_values json, _CountryId INT) AS
     $$
 BEGIN
     IF NOT EXISTS(SELECT * FROM Import.Country WHERE CountryId = @CountryId) THEN
-        RAISE EXCEPTION N'Страна с заданным идентификатором отсутствует!' USING ERRCODE = 51002;
+        RAISE EXCEPTION 'Страна с заданным идентификатором отсутствует!' USING ERRCODE = 51002;
     ELSE
       UPDATE Import.Country SET
 	    CountryName = COALESCE(T.JCountyName, CountryName),
@@ -688,7 +693,7 @@ CREATE OR REPLACE PROCEDURE Web.update_region(_values json, _RegionId INT) AS
     $$
 BEGIN
     IF NOT EXISTS(SELECT * FROM Import.Region WHERE RegionId = @RegionId) THEN
-        RAISE EXCEPTION N'Регион с заданным идентификатором отсутствует!' USING ERRCODE = 51003;
+        RAISE EXCEPTION 'Регион с заданным идентификатором отсутствует!' USING ERRCODE = 51003;
     ELSE
       UPDATE Import.Region SET
 	    RegionName = COALESCE(T.JRegionName, RegionName),
@@ -707,7 +712,7 @@ CREATE OR REPLACE PROCEDURE Web.update_locality(_values json, _LocalityId INT) A
     $$
 BEGIN
     IF NOT EXISTS(SELECT * FROM Import.Locality WHERE LocalityId = @LocalityId) THEN
-        RAISE EXCEPTION N'Населённый пункт с заданным идентификатором отсутствует!' USING ERRCODE = 51004;
+        RAISE EXCEPTION 'Населённый пункт с заданным идентификатором отсутствует!' USING ERRCODE = 51004;
     ELSE
       UPDATE Import.Locality SET
 	    LocalityName = COALESCE(T.JLocalityName, LocalityName),
@@ -726,7 +731,7 @@ CREATE OR REPLACE PROCEDURE Web.update_organization(_values json, _OrganizationI
     $$
 BEGIN
     IF NOT EXISTS(SELECT * FROM Import.Organization WHERE OrganizationId = @OrganizationId) THEN
-        RAISE EXCEPTION N'Организация с заданным идентификатором отсутствует!' USING ERRCODE = 51005;
+        RAISE EXCEPTION 'Организация с заданным идентификатором отсутствует!' USING ERRCODE = 51005;
     ELSE
       UPDATE Import.Organization SET
 	    OrganizationName = COALESCE(T.JOrganizationName, OrganizationName),
@@ -749,7 +754,7 @@ CREATE OR REPLACE PROCEDURE Web.update_station(_values json, _StationId INT) AS
     $$
 BEGIN
     IF NOT EXISTS(SELECT * FROM Import.Station WHERE StationId = @StationId) THEN
-        RAISE EXCEPTION N'Организация с заданным идентификатором отсутствует!' USING ERRCODE = 51006;
+        RAISE EXCEPTION 'Организация с заданным идентификатором отсутствует!' USING ERRCODE = 51006;
     ELSE
       UPDATE Import.Station SET
         StationName = COALESCE(T.JStationName, StationName),
@@ -772,15 +777,19 @@ END
 CREATE FUNCTION Import.func_calculate_total() RETURNS TRIGGER AS
     $$
     BEGIN
+        IF pg_trigger_depth() <> 1 THEN
+            RETURN NEW;
+         END IF;
         UPDATE Import.Country SET
-            TotalArea = I.LandArea + I.WaterArea
-        FROM inserted AS I WHERE I.CountryId = Country.CountryId;
+            TotalArea = NEW.LandArea + NEW.WaterArea
+        WHERE NEW.CountryId = Country.CountryId;
+        RETURN NEW;
     END;
     $$ LANGUAGE PLpgSQL;
 
-CREATE TRIGGER calculate_total AFTER UPDATE OR INSERT ON Import.Country
-    REFERENCING NEW TABLE AS inserted
-    FOR EACH STATEMENT EXECUTE FUNCTION Import.func_calculate_total();
+CREATE TRIGGER calculate_total_insert AFTER INSERT OR UPDATE ON Import.Country
+    FOR EACH ROW EXECUTE FUNCTION Import.func_calculate_total();
+
 
 -- Функции возвращающие содержимое таблиц в формаье JSON
 -- Получить все страны
@@ -1178,7 +1187,7 @@ CREATE FUNCTION Web.days_json(_StationId INT) RETURNS json AS
             'WindSpeedMAX', WindSpeedMAX,
             'WindSpeedMIN', WindSpeedMIN)
         FROM Agg.Days
-        WHERE StationId = _StationId FOR);
+        WHERE StationId = _StationId);
     END
     $$ LANGUAGE PLpgSQL;
 

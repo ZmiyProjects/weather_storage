@@ -1,13 +1,16 @@
 from flask import Flask, request, Response, abort
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, sql
 from flask_httpauth import HTTPBasicAuth
 from datetime import datetime
 from functools import wraps
 from typing import List
-from my_func import *
-from structures import UserData
 from werkzeug.security import generate_password_hash
 import json
+import sys
+import os
+from my_module import UserData, simple_import_values, simple_change, simple_get_set_values, simple_get_values
+
+sys.path.append(os.getcwd() + '/api')
 
 
 app = Flask(__name__)
@@ -15,9 +18,10 @@ app.config.from_object('config.Config')
 db = create_engine(app.config['DATABASE_URI'])
 auth = HTTPBasicAuth()
 
-with app.app_context():
-    if db.execute(sql.text('SELECT web.users_json()')).scalar() is None:
-        UserData.insert(db, user_login='Administrator', password=generate_password_hash('password'), role_id=1)
+# with app.app_context():
+#    if db.execute(sql.text('SELECT web.users_json()')).scalar() is None:
+#        UserData.insert(db, user_login='Administrator', password=generate_password_hash('password'), role_id=1)
+#        sleep(1)
 
 
 def role_required(roles: List[str]):
@@ -379,9 +383,12 @@ def registration(station_id):
     if request.method == 'POST':
         struct = request.get_json()
         query = sql.text('CALL web.insert_registration_json(:json, :id)')
-        if simple_import_values(db, query, json=json.dumps(struct), id=station_id):
-            return {}, 201
-        return {}, 400
+        try:
+            with db.begin() as conn:
+                conn.execute(query, json=json.dumps(struct), id=station_id)
+                return {}, 201
+        except:
+            return {}, 400
 
 
 @app.route('/station/<int:station_id>/registration', methods=['GET'])

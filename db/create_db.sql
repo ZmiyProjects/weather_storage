@@ -1,8 +1,4 @@
-
-CREATE DATABASE test_1;
-\connect test_1;
-
-
+-- SET DATESTYLE TO DMY;
 -- Создание схем
 CREATE SCHEMA Import;
 

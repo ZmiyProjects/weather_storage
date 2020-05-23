@@ -4,5 +4,5 @@ class Config:
     DEBUG = True
     POSTGRES_USER = 'weather_user'
     POSTGRES_PASSWORD = 'WeatherUser1'
-    POSTGRES_DB = 'test_1'
-    DATABASE_URI = f"postgresql+psycopg2://{POSTGRES_USER}:{POSTGRES_PASSWORD}@localhost:5432/{POSTGRES_DB}"
+    POSTGRES_DB = 'weather_db'
+    DATABASE_URI = f"postgresql+psycopg2://{POSTGRES_USER}:{POSTGRES_PASSWORD}@db:5432/{POSTGRES_DB}"

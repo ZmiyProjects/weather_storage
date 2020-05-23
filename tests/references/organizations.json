@@ -1,0 +1,23 @@
+[
+    {
+        "organization_name": "Центральное управление по гидрометеорологии и мониторингу окружающей среды",
+        "address": "ул. Образцова, д.6",
+        "web_site": "http://www.ecomos.ru/",
+        "parent_organization_id": null,
+        "locality_id": 1
+    },
+    {
+        "organization_name": "Владимирский центр по гидрометеорологии и мониторингу окружающей среды",
+        "address": "ул. Стрелецкая, д. 20",
+        "web_site": null,
+        "parent_organization_id": 1,
+        "locality_id": 2
+    },
+    {
+        "organization_name": "Рязанский центр по гидрометеорологии и мониторингу окружающей среды",
+        "address": " ул. Почтовая, д. 50, корп. 1",
+        "web_site": "http://meteo62.ru",
+        "parent_organization_id": 1,
+        "locality_id": 2
+    }
+]

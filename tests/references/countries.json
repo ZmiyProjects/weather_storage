@@ -1,0 +1,22 @@
+[
+    {
+        "country_name": "Россия",
+        "land_area": 16377742,
+        "water_area": 720500
+    },
+    {
+        "country_name": "Канада",
+        "land_area": 9093507,
+        "water_area": 891163
+    },
+    {
+        "country_name": "Китай",
+        "land_area": 9326410,
+        "water_area": 270550
+    },
+    {
+        "country_name": "США",
+        "land_area": 9147593,
+        "water_area": 377424
+    }
+]

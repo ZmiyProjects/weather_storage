@@ -92,7 +92,7 @@ CREATE TABLE Import.Registration(
     humidity NUMERIC(5, 2) NOT NULL,
     visible_range NUMERIC(6, 2) NOT NULL,
     wind_speed NUMERIC(5, 2) NOT NULL,
-    weather VARCHAR(255) NOT NULL,
+    weather VARCHAR(512) NOT NULL,
     wind_direction_id INT REFERENCES Static.WindDirection(wind_direction_id),
     cloudiness_id INT REFERENCES Static.Cloudiness(cloudiness_id),
     CONSTRAINT PK_Registration PRIMARY KEY(station_id, registration_date),

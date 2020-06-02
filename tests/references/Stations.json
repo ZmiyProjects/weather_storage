@@ -1,1 +1,154 @@
-[{"station_name":"Мурманск город","latitude":69.0,"longitude":33.1,"height":51,"region_id":2,"organization_id":1},{"station_name":"Архангельск город","latitude":64.4,"longitude":40.7,"height":8,"region_id":3,"organization_id":1},{"station_name":"Магадан город","latitude":59.6,"longitude":150.8,"height":116,"region_id":4,"organization_id":1},{"station_name":"Санкт-Петербург ИЦП","latitude":60.0,"longitude":30.3,"height":6,"region_id":5,"organization_id":1},{"station_name":"Нижний Новгород Мыза","latitude":56.3,"longitude":44.0,"height":157,"region_id":6,"organization_id":1},{"station_name":"Москва Шереметьево","latitude":56.0,"longitude":37.5,"height":189,"region_id":1,"organization_id":1},{"station_name":"Казань","latitude":55.6,"longitude":49.3,"height":116,"region_id":7,"organization_id":1},{"station_name":"Пенза Терновка","latitude":53.1,"longitude":45.0,"height":177,"region_id":8,"organization_id":1},{"station_name":"Екатеринбург город","latitude":56.8,"longitude":60.6,"height":283,"region_id":9,"organization_id":1},{"station_name":"Омск город","latitude":55.0,"longitude":73.4,"height":122,"region_id":10,"organization_id":1},{"station_name":"Уфа город","latitude":54.7,"longitude":55.8,"height":104,"region_id":11,"organization_id":1},{"station_name":"Самара обсерватория","latitude":53.3,"longitude":50.1,"height":130,"region_id":12,"organization_id":1},{"station_name":"Иркутск город","latitude":52.3,"longitude":104.3,"height":485,"region_id":13,"organization_id":1},{"station_name":"Чита город","latitude":52.1,"longitude":113.3,"height":680,"region_id":14,"organization_id":1},{"station_name":"Хабаровск","latitude":48.5,"longitude":135.2,"height":76,"region_id":15,"organization_id":1},{"station_name":"Петропавловск-Камч, обсерватория","latitude":53.0,"longitude":158.6,"height":24,"region_id":16,"organization_id":2},{"station_name":"Симферополь","latitude":44.7,"longitude":34.1,"height":181,"region_id":17,"organization_id":2},{"station_name":"Сочи Адлер","latitude":43.4,"longitude":39.9,"height":13,"region_id":18,"organization_id":3}]
+[
+    {
+        "station_name": "Мурманск город",
+        "latitude": 69.0,
+        "longitude": 33.1,
+        "height": 51,
+        "region_id": 2,
+        "organization_id": 1
+    },
+    {
+        "station_name": "Архангельск город",
+        "latitude": 64.4,
+        "longitude": 40.7,
+        "height": 8,
+        "region_id": 3,
+        "organization_id": 1
+    },
+    {
+        "station_name": "Магадан город",
+        "latitude": 59.6,
+        "longitude": 150.8,
+        "height": 116,
+        "region_id": 4,
+        "organization_id": 1
+    },
+    {
+        "station_name": "Санкт-Петербург ИЦП",
+        "latitude": 60.0,
+        "longitude": 30.3,
+        "height": 6,
+        "region_id": 5,
+        "organization_id": 1
+    },
+    {
+        "station_name": "Нижний Новгород Мыза",
+        "latitude": 56.3,
+        "longitude": 44.0,
+        "height": 157,
+        "region_id": 6,
+        "organization_id": 1
+    },
+    {
+        "station_name": "Москва Шереметьево",
+        "latitude": 56.0,
+        "longitude": 37.5,
+        "height": 189,
+        "region_id": 1,
+        "organization_id": 1
+    },
+    {
+        "station_name": "Казань",
+        "latitude": 55.6,
+        "longitude": 49.3,
+        "height": 116,
+        "region_id": 7,
+        "organization_id": 1
+    },
+    {
+        "station_name": "Пенза Терновка",
+        "latitude": 53.1,
+        "longitude": 45.0,
+        "height": 177,
+        "region_id": 8,
+        "organization_id": 1
+    },
+    {
+        "station_name": "Екатеринбург город",
+        "latitude": 56.8,
+        "longitude": 60.6,
+        "height": 283,
+        "region_id": 9,
+        "organization_id": 1
+    },
+    {
+        "station_name": "Омск город",
+        "latitude": 55.0,
+        "longitude": 73.4,
+        "height": 122,
+        "region_id": 10,
+        "organization_id": 1
+    },
+    {
+        "station_name": "Уфа город",
+        "latitude": 54.7,
+        "longitude": 55.8,
+        "height": 104,
+        "region_id": 11,
+        "organization_id": 1
+    },
+    {
+        "station_name": "Самара обсерватория",
+        "latitude": 53.3,
+        "longitude": 50.1,
+        "height": 130,
+        "region_id": 12,
+        "organization_id": 1
+    },
+    {
+        "station_name": "Иркутск город",
+        "latitude": 52.3,
+        "longitude": 104.3,
+        "height": 485,
+        "region_id": 13,
+        "organization_id": 1
+    },
+    {
+        "station_name": "Чита город",
+        "latitude": 52.1,
+        "longitude": 113.3,
+        "height": 680,
+        "region_id": 14,
+        "organization_id": 1
+    },
+    {
+        "station_name": "Хабаровск",
+        "latitude": 48.5,
+        "longitude": 135.2,
+        "height": 76,
+        "region_id": 15,
+        "organization_id": 1
+    },
+    {
+        "station_name": "Петропавловск-Камч, обсерватория",
+        "latitude": 53.0,
+        "longitude": 158.6,
+        "height": 24,
+        "region_id": 16,
+        "organization_id": 2
+    },
+    {
+        "station_name": "Симферополь",
+        "latitude": 44.7,
+        "longitude": 34.1,
+        "height": 181,
+        "region_id": 17,
+        "organization_id": 2
+    },
+    {
+        "station_name": "Сочи Адлер",
+        "latitude": 43.4,
+        "longitude": 39.9,
+        "height": 13,
+        "region_id": 18,
+        "organization_id": 3
+    },
+    {
+        "station_name": "Аэропорт Вашингтон",
+        "latitude": 38.9,
+        "longitude": -77.4,
+        "height": 93,
+        "region_id": 22,
+        "organization_id": 1
+    }
+]

@@ -388,6 +388,7 @@ def registration(station_id):
                 conn.execute(query, json=json.dumps(struct), id=station_id)
                 return {}, 201
         except:
+            print(sys.exc_info())
             return {}, 400
 
 
